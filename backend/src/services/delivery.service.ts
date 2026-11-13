@@ -4,6 +4,7 @@ import { Notification } from '../models/Notification.js';
 import { Community } from '../models/Community.js';
 import { User } from '../models/User.js';
 import { platformConfig } from '../config/platform.config.js';
+import { emitNotification } from './realtime.service.js';
 
 export interface IDeliveryTarget {
   targetType: SubscriptionTargetType;
@@ -25,7 +26,9 @@ export interface IDeliverContentParams {
     | 'subscription_content'
     | 'announcement'
     | 'schedule_change'
-    | 'research_publication';
+    | 'research_publication'
+    | 'calendar_change'
+    | 'system';
   message: string;
   entityId: string;
   institution?: string;
@@ -96,13 +99,14 @@ export class DeliveryService {
       // Map notification type to specific category preference
       if (params.type === 'opportunity' || params.type === 'application_status') {
         userQuery['notificationPreferences.opportunityAlerts'] = { $ne: false };
-      } else if (params.type === 'event_registration' || params.type === 'schedule_change') {
+      } else if (params.type === 'event_registration' || params.type === 'schedule_change' || params.type === 'calendar_change') {
         userQuery['notificationPreferences.eventAlerts'] = { $ne: false };
       } else if (params.type === 'research_publication') {
         userQuery['notificationPreferences.researchAlerts'] = { $ne: false };
       } else if (params.type === 'community_join' || params.type === 'announcement') {
         userQuery['notificationPreferences.communityAlerts'] = { $ne: false };
       }
+      if (params.type === 'system') userQuery['notificationPreferences.messagingAlerts'] = { $ne: false };
 
       const validUsers = await User.find(userQuery).select('_id');
       const finalRecipientIds = validUsers.map(u => u._id);
@@ -129,11 +133,24 @@ export class DeliveryService {
           type: params.type,
           entityId: params.entityId,
           message: params.message,
-          isRead: false
+          isRead: false,
+          deliveryStatus: 'pending',
+          attempts: 0,
+          idempotencyKey: `${params.type}:${params.entityId}:${recipientId}`
         }));
 
       if (toInsert.length > 0) {
-        await Notification.insertMany(toInsert);
+        const inserted = await Notification.insertMany(toInsert, { ordered: false });
+        for (const notification of inserted) {
+          try {
+            emitNotification(notification.recipient.toString(), notification);
+            notification.deliveryStatus = 'delivered'; notification.attempts += 1; notification.lastAttemptAt = new Date(); notification.failureReason = '';
+            await notification.save();
+          } catch (e: any) {
+            notification.attempts += 1; notification.lastAttemptAt = new Date(); notification.failureReason = String(e?.message || 'Realtime delivery failed').slice(0, 500);
+            notification.deliveryStatus = notification.attempts >= 5 ? 'failed' : 'pending'; notification.nextAttemptAt = new Date(Date.now() + Math.min(3600000, 1000 * 2 ** notification.attempts)); await notification.save();
+          }
+        }
       }
 
       return toInsert.length;

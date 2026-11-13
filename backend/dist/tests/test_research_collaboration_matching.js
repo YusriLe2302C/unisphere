@@ -65,10 +65,10 @@ const runTests = async () => {
             interests: ['Genetics'],
             isVerified: true
         }, { upsert: true, new: true });
-        const piToken = jsonwebtoken_1.default.sign({ id: piUser._id.toString(), email: piUser.email, role: piUser.role, institution: piUser.institution, name: piUser.name }, secret, { expiresIn: '1h' });
-        const supervisorToken = jsonwebtoken_1.default.sign({ id: supervisorUser._id.toString(), email: supervisorUser.email, role: supervisorUser.role, institution: supervisorUser.institution, name: supervisorUser.name }, secret, { expiresIn: '1h' });
-        const studentToken = jsonwebtoken_1.default.sign({ id: studentUser._id.toString(), email: studentUser.email, role: studentUser.role, institution: studentUser.institution, name: studentUser.name }, secret, { expiresIn: '1h' });
-        const unauthorizedToken = jsonwebtoken_1.default.sign({ id: unauthorizedStudent._id.toString(), email: unauthorizedStudent.email, role: unauthorizedStudent.role, institution: unauthorizedStudent.institution, name: unauthorizedStudent.name }, secret, { expiresIn: '1h' });
+        const piToken = jsonwebtoken_1.default.sign({ id: piUser._id.toString(), ver: piUser.tokenVersion, email: piUser.email, role: piUser.role, institution: piUser.institution, name: piUser.name }, secret, { expiresIn: '1h' });
+        const supervisorToken = jsonwebtoken_1.default.sign({ id: supervisorUser._id.toString(), ver: supervisorUser.tokenVersion, email: supervisorUser.email, role: supervisorUser.role, institution: supervisorUser.institution, name: supervisorUser.name }, secret, { expiresIn: '1h' });
+        const studentToken = jsonwebtoken_1.default.sign({ id: studentUser._id.toString(), ver: studentUser.tokenVersion, email: studentUser.email, role: studentUser.role, institution: studentUser.institution, name: studentUser.name }, secret, { expiresIn: '1h' });
+        const unauthorizedToken = jsonwebtoken_1.default.sign({ id: unauthorizedStudent._id.toString(), ver: unauthorizedStudent.tokenVersion, email: unauthorizedStudent.email, role: unauthorizedStudent.role, institution: unauthorizedStudent.institution, name: unauthorizedStudent.name }, secret, { expiresIn: '1h' });
         // Clean up past collaboration tests
         await ResearchCollaboration_js_1.ResearchCollaboration.deleteMany({ leadResearcher: { $in: [piUser._id, supervisorUser._id] } });
         await Notification_js_1.Notification.deleteMany({ recipient: { $in: [piUser._id, supervisorUser._id, studentUser._id, unauthorizedStudent._id] } });

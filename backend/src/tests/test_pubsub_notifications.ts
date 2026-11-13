@@ -60,19 +60,19 @@ const runTests = async () => {
     );
 
     const subToken = jwt.sign(
-      { id: subscriberUser._id.toString(), email: subscriberUser.email, role: subscriberUser.role, institution: subscriberUser.institution, name: subscriberUser.name },
+      { id: subscriberUser._id.toString(), ver: subscriberUser.tokenVersion, email: subscriberUser.email, role: subscriberUser.role, institution: subscriberUser.institution, name: subscriberUser.name },
       secret,
       { expiresIn: '1h' }
     );
 
     const pubToken = jwt.sign(
-      { id: publisherUser._id.toString(), email: publisherUser.email, role: publisherUser.role, institution: publisherUser.institution, name: publisherUser.name },
+      { id: publisherUser._id.toString(), ver: publisherUser.tokenVersion, email: publisherUser.email, role: publisherUser.role, institution: publisherUser.institution, name: publisherUser.name },
       secret,
       { expiresIn: '1h' }
     );
 
     const extToken = jwt.sign(
-      { id: externalUser._id.toString(), email: externalUser.email, role: externalUser.role, institution: externalUser.institution, name: externalUser.name },
+      { id: externalUser._id.toString(), ver: externalUser.tokenVersion, email: externalUser.email, role: externalUser.role, institution: externalUser.institution, name: externalUser.name },
       secret,
       { expiresIn: '1h' }
     );

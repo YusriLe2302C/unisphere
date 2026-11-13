@@ -33,7 +33,7 @@ const runSecurityPassTests = async () => {
             department: 'Computer Science',
             isVerified: true
         });
-        const tokenA = jsonwebtoken_1.default.sign({ id: studentA._id, email: studentA.email, role: studentA.role, institution: studentA.institution }, secret, { expiresIn: '1h' });
+        const tokenA = jsonwebtoken_1.default.sign({ id: studentA._id, ver: studentA.tokenVersion, email: studentA.email, role: studentA.role, institution: studentA.institution }, secret, { expiresIn: '1h' });
         const studentB = await User_js_1.User.create({
             name: `Student B ${ts}`,
             email: `studentb_${ts}@test.ac.in`,
@@ -43,7 +43,7 @@ const runSecurityPassTests = async () => {
             department: 'Electronics',
             isVerified: true
         });
-        const tokenB = jsonwebtoken_1.default.sign({ id: studentB._id, email: studentB.email, role: studentB.role, institution: studentB.institution }, secret, { expiresIn: '1h' });
+        const tokenB = jsonwebtoken_1.default.sign({ id: studentB._id, ver: studentB.tokenVersion, email: studentB.email, role: studentB.role, institution: studentB.institution }, secret, { expiresIn: '1h' });
         const clubLeader = await User_js_1.User.create({
             name: `Club Leader ${ts}`,
             email: `leader_${ts}@test.ac.in`,
@@ -52,7 +52,7 @@ const runSecurityPassTests = async () => {
             institution: 'RNS Institute of Technology',
             isVerified: true
         });
-        const tokenLeader = jsonwebtoken_1.default.sign({ id: clubLeader._id, email: clubLeader.email, role: clubLeader.role, institution: clubLeader.institution }, secret, { expiresIn: '1h' });
+        const tokenLeader = jsonwebtoken_1.default.sign({ id: clubLeader._id, ver: clubLeader.tokenVersion, email: clubLeader.email, role: clubLeader.role, institution: clubLeader.institution }, secret, { expiresIn: '1h' });
         console.log('PASS: Personas created successfully.');
         // 2. Test Privacy & IDOR Prevention on Application Dossiers
         console.log('\n--- 2. Testing Privacy & IDOR Prevention on Candidate Dossiers ---');

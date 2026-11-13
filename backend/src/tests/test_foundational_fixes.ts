@@ -118,7 +118,7 @@ const runTests = async () => {
     if (community) {
       const creator = await User.findById(community.creator);
       if (creator) {
-        const creatorToken = jwt.sign({ id: creator._id }, secret, { expiresIn: '1h' });
+        const creatorToken = jwt.sign({ id: creator._id, ver: creator.tokenVersion }, secret, { expiresIn: '1h' });
         const creatorLeaveRes = await fetch(`${baseUrl}/communities/${community._id}/leave`, {
           method: 'POST',
           headers: {

@@ -33,7 +33,8 @@ exports.swaggerDocument = {
                     _id: { type: 'string' },
                     name: { type: 'string', example: 'Aryan Sharma' },
                     email: { type: 'string', example: 'aryan.sharma@rnsit.ac.in' },
-                    role: { type: 'string', enum: ['student', 'faculty', 'alumni', 'admin'], example: 'student' },
+                    role: { type: 'string', enum: ['student', 'faculty', 'alumni', 'dean', 'principal', 'admin'], example: 'student' },
+                    responsibilities: { type: 'array', items: { type: 'string', enum: ['proctor', 'project_guide', 'rnd_staff', 'placement_coordinator', 'club_advisor'] } },
                     institution: { type: 'string', example: 'RNS Institute of Technology' },
                     institutionDomain: { type: 'string', example: 'rnsit.ac.in' },
                     isVerified: { type: 'boolean', example: true },
@@ -109,8 +110,24 @@ exports.swaggerDocument = {
         { name: 'Opportunities', description: 'Internships, research positions, hackathons & mentorships' },
         { name: 'Notifications', description: 'User alerts, activity updates & read status' },
         { name: 'Admin', description: 'Campus governance, user verification & moderation' },
+        { name: 'Messages', description: 'Persistent private and group messaging, history and receipts' },
     ],
     paths: {
+        '/api/files': { post: { tags: ['Files'], summary: 'Upload a validated file and create private metadata', security: [{ bearerAuth: [] }], requestBody: { required: true, content: { 'multipart/form-data': { schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' }, associatedEntityType: { type: 'string' }, associatedEntityId: { type: 'string' }, accessPolicy: { type: 'string', enum: ['private', 'restricted', 'institutional', 'public'] } }, required: ['file', 'associatedEntityType'] } } } }, responses: { 201: { description: 'Stored file metadata' }, 415: { description: 'Invalid file signature' } } } },
+        '/api/files/{id}': { get: { tags: ['Files'], summary: 'Download or preview an authorized file', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'File bytes' }, 403: { description: 'Access denied' } } }, delete: { tags: ['Files'], summary: 'Delete an authorized file', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Deleted' } } } },
+        '/api/files/{id}/replace': { put: { tags: ['Files'], summary: 'Replace file content while retaining metadata identity', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Replaced' } } } },
+        '/api/files/maintenance/orphans': { post: { tags: ['Files'], summary: 'Report or clean orphaned storage objects', security: [{ bearerAuth: [] }], responses: { 200: { description: 'Orphan scan result' } } } },
+        '/api/timetable/revisions': { post: { tags: ['Timetable'], summary: 'Stage a conflict-checked department timetable revision', security: [{ bearerAuth: [] }], responses: { 201: { description: 'Revision staged' }, 409: { description: 'Scheduling conflict' } } } },
+        '/api/timetable/revisions/{changeSetId}/publish': { post: { tags: ['Timetable'], summary: 'Publish a staged timetable revision', security: [{ bearerAuth: [] }], parameters: [{ name: 'changeSetId', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Revision published' }, 409: { description: 'Scheduling conflict' } } } },
+        '/api/timetable/department/{department}': { get: { tags: ['Timetable'], summary: 'Retrieve published timetable by department with filters', security: [{ bearerAuth: [] }], parameters: [{ name: 'department', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Published timetable' } } } },
+        '/api/timetable/me': { get: { tags: ['Timetable'], summary: 'Retrieve the signed-in student or faculty timetable', security: [{ bearerAuth: [] }], responses: { 200: { description: 'Personal timetable' } } } },
+        '/api/messages/conversations': { get: { tags: ['Messages'], summary: 'List conversations for the signed-in user', security: [{ bearerAuth: [] }], responses: { 200: { description: 'Conversation list' } } } },
+        '/api/messages/conversations/direct': { post: { tags: ['Messages'], summary: 'Create or retrieve an authorized direct conversation', security: [{ bearerAuth: [] }], responses: { 200: { description: 'Conversation' }, 403: { description: 'Direct messages are unavailable' } } } },
+        '/api/messages/conversations/group': { post: { tags: ['Messages'], summary: 'Create a same-institution group conversation', security: [{ bearerAuth: [] }], responses: { 201: { description: 'Conversation created' } } } },
+        '/api/messages/conversations/{id}/messages': { get: { tags: ['Messages'], summary: 'Retrieve paginated persistent message history', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Message history' } } }, post: { tags: ['Messages'], summary: 'Persist and send a message', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 201: { description: 'Message saved' } } } },
+        '/api/notifications/preferences': { get: { tags: ['Notifications'], summary: 'Get notification preferences', security: [{ bearerAuth: [] }], responses: { 200: { description: 'Notification preferences' } } }, put: { tags: ['Notifications'], summary: 'Update notification preferences', security: [{ bearerAuth: [] }], responses: { 200: { description: 'Preferences updated' } } } },
+        '/api/admin/audit': { get: { tags: ['Admin'], summary: 'View immutable, tamper-evident audit entries', security: [{ bearerAuth: [] }], responses: { 200: { description: 'Audit entries' } } } },
+        '/api/admin/audit/verify': { get: { tags: ['Admin'], summary: 'Verify the audit chain and HMAC digests', security: [{ bearerAuth: [] }], responses: { 200: { description: 'Chain verification result' } } } },
         '/api/health': {
             get: {
                 summary: 'Service Health Check',
@@ -190,6 +207,155 @@ exports.swaggerDocument = {
                 },
             },
         },
+        '/api/auth/logout': {
+            post: {
+                tags: ['Auth'],
+                summary: 'Logout — revokes current JWT via tokenVersion increment',
+                security: [{ bearerAuth: [] }],
+                responses: {
+                    200: { description: 'Logged out, token revoked' },
+                    401: { description: 'Unauthorized' },
+                },
+            },
+        },
+        '/api/auth/verify-email/{token}': {
+            get: {
+                tags: ['Auth'],
+                summary: 'Verify email address via token link',
+                parameters: [{ name: 'token', in: 'path', required: true, schema: { type: 'string' } }],
+                responses: {
+                    200: { description: 'Email verified' },
+                    400: { description: 'Invalid or expired token' },
+                },
+            },
+        },
+        '/api/auth/forgot-password': {
+            post: {
+                tags: ['Auth'],
+                summary: 'Request password reset link',
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: { type: 'object', required: ['email'], properties: { email: { type: 'string' } } },
+                        },
+                    },
+                },
+                responses: {
+                    200: { description: 'Reset link sent (or silently ignored if email not found)' },
+                },
+            },
+        },
+        '/api/auth/reset-password': {
+            post: {
+                tags: ['Auth'],
+                summary: 'Reset password using token from email',
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['token', 'newPassword'],
+                                properties: {
+                                    token: { type: 'string' },
+                                    newPassword: { type: 'string', minLength: 8 },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    200: { description: 'Password reset successfully' },
+                    400: { description: 'Invalid or expired token' },
+                },
+            },
+        },
+        '/api/auth/create-authority': {
+            post: {
+                tags: ['Auth'],
+                summary: 'Admin: create authority account (dean, principal, admin, faculty, etc.)',
+                security: [{ bearerAuth: [] }],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['name', 'email', 'password', 'institution', 'role'],
+                                properties: {
+                                    name: { type: 'string' },
+                                    email: { type: 'string' },
+                                    password: { type: 'string', minLength: 8 },
+                                    institution: { type: 'string' },
+                                    role: { type: 'string', enum: ['student', 'faculty', 'alumni', 'dean', 'principal', 'admin'] },
+                                    responsibilities: { type: 'array', items: { type: 'string', enum: ['proctor', 'project_guide', 'rnd_staff', 'placement_coordinator', 'club_advisor'] } },
+                                    department: { type: 'string' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    201: { description: 'Authority account created' },
+                    400: { description: 'Validation error or duplicate email' },
+                    403: { description: 'Insufficient privileges' },
+                },
+            },
+        },
+        '/api/auth/users/{userId}/role': {
+            put: {
+                tags: ['Auth'],
+                summary: 'Admin: assign primary role to existing user',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'string' } }],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['role'],
+                                properties: {
+                                    role: { type: 'string', enum: ['student', 'faculty', 'alumni', 'dean', 'principal', 'admin'] },
+                                    responsibilities: { type: 'array', items: { type: 'string' } },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    200: { description: 'Role assigned' },
+                    403: { description: 'Privilege escalation blocked' },
+                },
+            },
+        },
+        '/api/auth/users/{userId}/responsibilities': {
+            put: {
+                tags: ['Auth'],
+                summary: 'Admin/Dean/Principal: assign scoped responsibilities without creating new account',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'string' } }],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['responsibilities'],
+                                properties: {
+                                    responsibilities: { type: 'array', items: { type: 'string', enum: ['proctor', 'project_guide', 'rnd_staff', 'placement_coordinator', 'club_advisor'] } },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    200: { description: 'Responsibilities updated' },
+                    403: { description: 'Insufficient authority' },
+                },
+            },
+        },
         '/api/users': {
             get: {
                 tags: ['Users'],
@@ -257,6 +423,32 @@ exports.swaggerDocument = {
                 },
             },
         },
+        '/api/users/{id}/status': {
+            put: {
+                tags: ['Users'],
+                summary: 'Admin/Dean/Principal: suspend or reactivate user account',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                properties: {
+                                    isActive: { type: 'boolean' },
+                                    disciplinaryStatus: { type: 'string', enum: ['good_standing', 'warning', 'probation', 'suspended'] },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    200: { description: 'Account status updated' },
+                    403: { description: 'Cross-institution access blocked or insufficient role' },
+                },
+            },
+        },
         '/api/users/{id}/follow': {
             post: {
                 tags: ['Users'],
@@ -268,6 +460,35 @@ exports.swaggerDocument = {
                 },
             },
         },
+        '/api/research/papers/mine': { get: { tags: ['Research'], summary: 'List papers you submitted or review', security: [{ bearerAuth: [] }], responses: { 200: { description: 'Research papers' } } } },
+        '/api/research/assignments': {
+            get: { tags: ['Research'], summary: 'List scoped research assignment history', security: [{ bearerAuth: [] }], responses: { 200: { description: 'Assignments' } } },
+            post: { tags: ['Research'], summary: 'Assign Proctor or Project Guide', security: [{ bearerAuth: [] }], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['studentId', 'facultyId', 'assignmentType'], properties: { studentId: { type: 'string' }, facultyId: { type: 'string' }, assignmentType: { type: 'string', enum: ['proctor', 'project_guide'] }, collaborationId: { type: 'string' } } } } }, responses: { 201: { description: 'Assignment created' }, 403: { description: 'Insufficient authority' } } } }
+        },
+        '/api/research/assignments/{id}/reassign': { post: { tags: ['Research'], summary: 'Reassign research reviewer and retain history', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 201: { description: 'Assignment transferred' } } } },
+        '/api/research/papers/{id}/reviews': {
+            get: { tags: ['Research'], summary: 'Get authorized review history', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Review history' } } },
+            post: { tags: ['Research'], summary: 'Submit assigned Proctor or Project Guide review', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['verdict', 'comments'], properties: { verdict: { type: 'string', enum: ['approved', 'changes_requested', 'rejected'] }, comments: { type: 'string' } } } } }, responses: { 201: { description: 'Review saved' }, 403: { description: 'Not assigned reviewer' }, 409: { description: 'Duplicate or invalid review stage' } } } }
+        },
+        '/api/research/papers/{id}/resubmit': { post: { tags: ['Research'], summary: 'Resubmit rejected student research for a new review cycle', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Resubmitted' } } } },
+        '/api/research/papers/{id}/publish': { post: { tags: ['Research'], summary: 'Publish approved student paper or faculty authored research', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Published' }, 409: { description: 'Required approvals missing' } } } },
+        '/api/career/alumni': { get: { tags: ['Career Connect'], summary: 'Search institution alumni by company, industry, designation, or skill', security: [{ bearerAuth: [] }], responses: { 200: { description: 'Matching alumni' } } } },
+        '/api/career/alumni/profile': { put: { tags: ['Career Connect'], summary: 'Update own alumni professional profile', security: [{ bearerAuth: [] }], responses: { 200: { description: 'Profile updated' } } } },
+        '/api/career/questions': {
+            get: { tags: ['Career Connect'], summary: 'List institution-visible career questions and participant private threads', security: [{ bearerAuth: [] }], responses: { 200: { description: 'Career questions' } } },
+            post: { tags: ['Career Connect'], summary: 'Create institution-visible question or private mentor inquiry', security: [{ bearerAuth: [] }], responses: { 201: { description: 'Question created' }, 403: { description: 'Invalid private attachments or mentor' } } }
+        },
+        '/api/career/questions/{id}/answers': { post: { tags: ['Career Connect'], summary: 'Answer a public question or assigned private inquiry', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 201: { description: 'Answer posted' }, 403: { description: 'Not authorized' } } } },
+        '/api/career/questions/{id}/followups': { post: { tags: ['Career Connect'], summary: 'Add a participant follow-up', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 201: { description: 'Follow-up posted' } } } },
+        '/api/career/connections': { get: { tags: ['Career Connect'], summary: 'List your connection requests and accepted connections', security: [{ bearerAuth: [] }], responses: { 200: { description: 'Connections' } } } },
+        '/api/career/connections/{userId}': { post: { tags: ['Career Connect'], summary: 'Request a student-to-alumni connection', security: [{ bearerAuth: [] }], parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'string' } }], responses: { 201: { description: 'Request sent' }, 409: { description: 'Reverse or duplicate request exists' } } } },
+        '/api/career/connections/{id}': { put: { tags: ['Career Connect'], summary: 'Accept or reject connection request', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Connection updated' } } }, delete: { tags: ['Career Connect'], summary: 'Remove connection', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Connection removed' } } } },
+        '/api/career/mentorship/requests': { get: { tags: ['Career Connect'], summary: 'List private mentorship requests for student or alumni mentor', security: [{ bearerAuth: [] }], responses: { 200: { description: 'Requests' } } }, post: { tags: ['Career Connect'], summary: 'Send a private mentorship request to alumni', security: [{ bearerAuth: [] }], responses: { 201: { description: 'Request sent' }, 409: { description: 'Active request exists' } } } },
+        '/api/career/mentorship/requests/{id}': { put: { tags: ['Career Connect'], summary: 'Accept, decline, or cancel private mentorship request', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Request updated' } } } },
+        '/api/career/placement/opportunities/{id}': { put: { tags: ['Placement'], summary: 'Update placement drive details', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Drive updated' } } } },
+        '/api/career/placement/opportunities/{id}/applications': { get: { tags: ['Placement'], summary: 'List applicants for a placement drive', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Applications' } } } },
+        '/api/career/placement/applications/{id}': { put: { tags: ['Placement'], summary: 'Update application status, interviews, selection, or offer status', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Application updated' } } } },
+        '/api/applications/{id}/history': { get: { tags: ['Placement'], summary: 'Get authorized application history and interview rounds', security: [{ bearerAuth: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Application history' } } } },
         '/api/posts': {
             get: {
                 tags: ['Posts'],
@@ -489,7 +710,7 @@ exports.swaggerDocument = {
         '/api/opportunities/{id}/apply': {
             post: {
                 tags: ['Opportunities'],
-                summary: 'Apply or express interest in opportunity',
+                summary: 'Apply and create an Application record; placement eligibility is checked server-side',
                 security: [{ bearerAuth: [] }],
                 parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
                 responses: {
@@ -514,6 +735,43 @@ exports.swaggerDocument = {
                 security: [{ bearerAuth: [] }],
                 responses: {
                     200: { description: 'Notifications marked read' },
+                },
+            },
+        },
+        '/api/admin/users': {
+            get: {
+                tags: ['Admin'],
+                summary: 'List all users with role/institution filters (admin/dean/principal)',
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    { name: 'role', in: 'query', schema: { type: 'string' } },
+                    { name: 'institution', in: 'query', schema: { type: 'string' } },
+                    { name: 'isActive', in: 'query', schema: { type: 'boolean' } },
+                    { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+                    { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
+                ],
+                responses: {
+                    200: { description: 'Paginated user list' },
+                    403: { description: 'Insufficient role' },
+                },
+            },
+        },
+        '/api/admin/users/{id}/verify': {
+            put: {
+                tags: ['Admin'],
+                summary: 'Admin: verify or unverify user institution',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: { type: 'object', properties: { isVerified: { type: 'boolean' } } },
+                        },
+                    },
+                },
+                responses: {
+                    200: { description: 'Verification updated' },
                 },
             },
         },

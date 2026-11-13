@@ -35,21 +35,73 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Post = void 0;
 const mongoose_1 = __importStar(require("mongoose"));
-const CommentSchema = new mongoose_1.Schema({
+const CommentReplySchema = new mongoose_1.Schema({
     user: { type: mongoose_1.Schema.Types.ObjectId, ref: 'User', required: true },
     content: { type: String, required: true, trim: true }
 }, { timestamps: true });
+const CommentSchema = new mongoose_1.Schema({
+    user: { type: mongoose_1.Schema.Types.ObjectId, ref: 'User', required: true },
+    content: { type: String, required: true, trim: true },
+    replies: { type: [CommentReplySchema], default: [] }
+}, { timestamps: true });
+const EventRegistrationSchema = new mongoose_1.Schema({
+    userId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'User', required: true },
+    registeredAt: { type: Date, default: Date.now },
+    status: {
+        type: String,
+        enum: ['registered', 'waitlisted', 'cancelled', 'attended'],
+        default: 'registered'
+    },
+    teamName: { type: String },
+    teamMembers: [{ type: mongoose_1.Schema.Types.ObjectId, ref: 'User' }],
+    seatsAllocated: { type: Number, default: 1 },
+    attendanceMarked: { type: Boolean, default: false },
+    attendedAt: { type: Date },
+    ticketCode: { type: String, required: true }
+}, { _id: false });
+const WaitlistEntrySchema = new mongoose_1.Schema({
+    userId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'User', required: true },
+    teamName: { type: String },
+    teamMembers: [{ type: mongoose_1.Schema.Types.ObjectId, ref: 'User' }],
+    seatsRequested: { type: Number, default: 1 },
+    waitlistedAt: { type: Date, default: Date.now }
+}, { _id: false });
 const EventDetailsSchema = new mongoose_1.Schema({
     venue: { type: String, default: '' },
     startDate: { type: Date },
     endDate: { type: Date },
     organizer: { type: String, default: '' },
     capacity: { type: Number, default: 0 },
-    registeredAttendees: [{ type: mongoose_1.Schema.Types.ObjectId, ref: 'User' }],
-    attendedAttendees: [{ type: mongoose_1.Schema.Types.ObjectId, ref: 'User' }],
-    waitlist: [{ type: mongoose_1.Schema.Types.ObjectId, ref: 'User' }],
+    allocatedSeats: { type: Number, default: 0 },
+    registrationDeadline: { type: Date },
+    isVirtual: { type: Boolean, default: false },
+    virtualMeetingUrl: { type: String, default: '' },
+    isTeamEvent: { type: Boolean, default: false },
+    minTeamSize: { type: Number, default: 1 },
+    maxTeamSize: { type: Number, default: 1 },
+    allowWaitlist: { type: Boolean, default: true },
+    approvalStatus: {
+        type: String,
+        enum: ['draft', 'pending_review', 'approved', 'rejected', 'cancelled'],
+        default: 'approved'
+    },
+    publicationStatus: {
+        type: String,
+        enum: ['unannounced', 'published', 'hidden'],
+        default: 'published'
+    },
+    approvedBy: { type: mongoose_1.Schema.Types.ObjectId, ref: 'User' },
+    approvedAt: { type: Date },
+    targetColleges: { type: [String], default: [] },
+    targetDepartments: { type: [String], default: [] },
+    targetBatches: { type: [String], default: [] },
+    registrations: { type: [EventRegistrationSchema], default: [] },
+    waitlist: { type: [WaitlistEntrySchema], default: [] },
     isCancelled: { type: Boolean, default: false },
     cancellationReason: { type: String, default: '' },
+    // Backward compatibility
+    registeredAttendees: [{ type: mongoose_1.Schema.Types.ObjectId, ref: 'User' }],
+    attendedAttendees: [{ type: mongoose_1.Schema.Types.ObjectId, ref: 'User' }],
     sportsDetails: {
         sportType: { type: String, default: '' },
         teams: { type: [String], default: [] },
@@ -100,9 +152,25 @@ const PostSchema = new mongoose_1.Schema({
     tags: { type: [String], default: [] },
     community: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Community', default: null, index: true },
     likes: [{ type: mongoose_1.Schema.Types.ObjectId, ref: 'User' }],
+    dislikes: [{ type: mongoose_1.Schema.Types.ObjectId, ref: 'User' }],
+    bookmarks: [{ type: mongoose_1.Schema.Types.ObjectId, ref: 'User' }],
+    sharesCount: { type: Number, default: 0 },
     comments: { type: [CommentSchema], default: [] },
     mediaUrl: { type: String, default: '' },
+    attachments: [{ type: mongoose_1.Schema.Types.ObjectId, ref: 'UploadedFile' }],
     deadline: { type: String, default: '' },
+    isPinned: { type: Boolean, default: false },
+    isSolved: { type: Boolean, default: false },
     eventDetails: { type: EventDetailsSchema, default: null }
 }, { timestamps: true });
+// Indexes
+PostSchema.index({ author: 1, createdAt: -1 });
+PostSchema.index({ institution: 1, createdAt: -1 });
+PostSchema.index({ community: 1, createdAt: -1 });
+PostSchema.index({
+    'eventDetails.approvalStatus': 1,
+    'eventDetails.publicationStatus': 1,
+    'eventDetails.startDate': 1
+}, { partialFilterExpression: { category: 'Event' } });
+PostSchema.index({ 'eventDetails.registrations.ticketCode': 1 }, { unique: true, sparse: true });
 exports.Post = mongoose_1.default.model('Post', PostSchema);

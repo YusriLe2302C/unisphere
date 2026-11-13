@@ -5,6 +5,7 @@ import { Post } from '../models/Post.js';
 import { Opportunity } from '../models/Opportunity.js';
 import { Application } from '../models/Application.js';
 import { ResearchPaper } from '../models/ResearchPaper.js';
+import { Notification } from '../models/Notification.js';
 import mongoose from 'mongoose';
 import jwt from 'jsonwebtoken';
 import { getJwtSecret } from '../middleware/auth.js';
@@ -69,10 +70,10 @@ const runTests = async () => {
       { upsert: true, new: true }
     );
 
-    const studentToken = jwt.sign({ id: studentUser._id, role: 'student', institution: studentUser.institution }, secret, { expiresIn: '1h' });
-    const student2Token = jwt.sign({ id: studentUser2._id, role: 'student', institution: studentUser2.institution }, secret, { expiresIn: '1h' });
-    const student3Token = jwt.sign({ id: studentUser3._id, role: 'student', institution: studentUser3.institution }, secret, { expiresIn: '1h' });
-    const facultyToken = jwt.sign({ id: facultyUser._id, role: 'faculty', institution: facultyUser.institution }, secret, { expiresIn: '1h' });
+    const studentToken = jwt.sign({ id: studentUser._id, ver: studentUser.tokenVersion, role: 'student', institution: studentUser.institution }, secret, { expiresIn: '1h' });
+    const student2Token = jwt.sign({ id: studentUser2._id, ver: studentUser2.tokenVersion, role: 'student', institution: studentUser2.institution }, secret, { expiresIn: '1h' });
+    const student3Token = jwt.sign({ id: studentUser3._id, ver: studentUser3.tokenVersion, role: 'student', institution: studentUser3.institution }, secret, { expiresIn: '1h' });
+    const facultyToken = jwt.sign({ id: facultyUser._id, ver: facultyUser.tokenVersion, role: 'faculty', institution: facultyUser.institution }, secret, { expiresIn: '1h' });
 
     console.log('Identities established successfully.');
 
@@ -164,16 +165,17 @@ const runTests = async () => {
       throw new Error('FAIL: Student 2 failed to register for event');
     }
 
-    // User 3 attempts to register (should be blocked by capacity limit)
+    // User 3 attempts to register (should be waitlisted at capacity)
     const rsvp3 = await fetch(`${baseUrl}/posts/${eventPost._id}/event-register`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${student3Token}` }
     });
-    console.log(`Student 3 RSVP (Over Capacity): HTTP ${rsvp3.status} (Expected 400)`);
-    if (rsvp3.status !== 400) {
-      throw new Error(`FAIL: Capacity limit was not enforced! HTTP ${rsvp3.status}`);
+    const rsvp3Data: any = await rsvp3.json();
+    console.log(`Student 3 RSVP (Over Capacity): HTTP ${rsvp3.status}, isWaitlisted: ${rsvp3Data.isWaitlisted}`);
+    if (rsvp3.status !== 200 || !rsvp3Data.isWaitlisted) {
+      throw new Error(`FAIL: Capacity waitlisting failed! HTTP ${rsvp3.status}`);
     }
-    console.log('PASS: Event capacity overflow strictly prevented.');
+    console.log('PASS: Capacity overflow was waitlisted.');
 
     // User 1 withdraws RSVP
     const withdrawRsvp = await fetch(`${baseUrl}/posts/${eventPost._id}/event-register`, {
@@ -181,10 +183,12 @@ const runTests = async () => {
       headers: { Authorization: `Bearer ${studentToken}` }
     });
     const withdrawData: any = await withdrawRsvp.json();
-    console.log(`Student 1 Withdraws RSVP: HTTP ${withdrawRsvp.status}, isRegistered: ${withdrawData.isRegistered} (Expected false)`);
+    console.log(`Student 1 Withdraws RSVP: HTTP ${withdrawRsvp.status}, isRegistered: ${withdrawData.isRegistered} (Expected false), body: ${JSON.stringify(withdrawData)}`);
     if (withdrawRsvp.status !== 200 || withdrawData.isRegistered !== false) {
       throw new Error('FAIL: User 1 could not withdraw RSVP');
     }
+    const promoted = await Notification.findOne({ recipient: studentUser3._id, type: 'event_registration', entityId: eventPost._id.toString() });
+    if (!promoted) throw new Error('FAIL: Waitlisted attendee did not receive a promotion notice.');
     console.log('PASS: Event RSVP toggle and seat vacancy update verified.');
 
     // 4. CLUB RECRUITMENT & APPLICATION PIPELINE

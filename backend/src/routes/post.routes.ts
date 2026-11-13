@@ -14,6 +14,33 @@ const escapeRegex = (text: string): string => {
   return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
 };
 
+// GET Institution-Specific Feed
+router.get('/feed/institution', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { page = 1, limit = 20, category, tag } = req.query;
+    const user = req.user!;
+    const filter: any = { institution: user.institution };
+    if (category && category !== 'All') filter.category = category;
+    if (tag) filter.tags = { $in: [tag as string] };
+
+    const skip = (Number(page) - 1) * Number(limit);
+    const [posts, total] = await Promise.all([
+      Post.find(filter)
+        .populate('author', 'name avatar institution role headline isVerified')
+        .populate('comments.user', 'name avatar institution role')
+        .populate('community', 'name slug avatar')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(Number(limit)),
+      Post.countDocuments(filter)
+    ]);
+
+    res.json({ posts, total, page: Number(page), pages: Math.ceil(total / Number(limit)) });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Error retrieving institution feed.', error: error.message });
+  }
+});
+
 // GET Global Feed (with cross-college posts, category filter, audience, search, pagination)
 router.get('/', optionalAuthenticate, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -263,7 +290,7 @@ router.post('/:id/event-register', authenticate, async (req: AuthRequest, res: R
 
     const userId = req.user!._id;
     const currentAttendees = (post.eventDetails.registeredAttendees || []).map(id => id.toString());
-    const currentWaitlist = (post.eventDetails.waitlist || []).map(id => id.toString());
+    const currentWaitlist = (post.eventDetails.waitlist || []).map((entry: any) => (entry?.userId || entry).toString());
     const isRegistered = currentAttendees.includes(userId.toString());
     const isWaitlisted = currentWaitlist.includes(userId.toString());
 
@@ -271,7 +298,7 @@ router.post('/:id/event-register', authenticate, async (req: AuthRequest, res: R
       // Leave waitlist
       const updated = await Post.findByIdAndUpdate(
         post._id,
-        { $pull: { 'eventDetails.waitlist': userId } },
+        { $pull: { 'eventDetails.waitlist': { userId } } },
         { new: true }
       );
       res.json({
@@ -289,7 +316,8 @@ router.post('/:id/event-register', authenticate, async (req: AuthRequest, res: R
       // Check if there is someone in waitlist to automatically promote!
       let promotedUserId: Types.ObjectId | null = null;
       if (post.eventDetails.waitlist && post.eventDetails.waitlist.length > 0) {
-        promotedUserId = post.eventDetails.waitlist[0];
+        const firstEntry = post.eventDetails.waitlist[0];
+        promotedUserId = (firstEntry as any)?.userId || (firstEntry as Types.ObjectId);
       }
 
       // 1. Remove the cancelling user from registeredAttendees
@@ -301,7 +329,7 @@ router.post('/:id/event-register', authenticate, async (req: AuthRequest, res: R
       let updated;
       if (promotedUserId) {
         await Post.findByIdAndUpdate(post._id, {
-          $pull: { 'eventDetails.waitlist': promotedUserId }
+          $pull: { 'eventDetails.waitlist': { userId: promotedUserId } }
         });
         updated = await Post.findByIdAndUpdate(
           post._id,
@@ -334,7 +362,7 @@ router.post('/:id/event-register', authenticate, async (req: AuthRequest, res: R
           // Event full: add to waitlist!
           const updated = await Post.findByIdAndUpdate(
             post._id,
-            { $addToSet: { 'eventDetails.waitlist': userId } },
+            { $addToSet: { 'eventDetails.waitlist': { userId, seatsRequested: 1, teamMembers: [] } } },
             { new: true }
           );
 
@@ -710,6 +738,55 @@ router.post(['/:id/comments', '/:id/comment'], authenticate, async (req: AuthReq
     });
   } catch (error: any) {
     res.status(500).json({ message: 'Error adding comment.', error: error.message });
+  }
+});
+
+// ADD REPLY TO COMMENT
+router.post('/:id/comments/:commentId/replies', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { content } = req.body;
+    if (!content || !content.trim()) {
+      res.status(400).json({ message: 'Reply content cannot be empty.' });
+      return;
+    }
+
+    const post = await Post.findById(req.params.id);
+    if (!post) { res.status(404).json({ message: 'Post not found.' }); return; }
+
+    const comment = post.comments.find(c => c._id?.toString() === req.params.commentId);
+    if (!comment) { res.status(404).json({ message: 'Comment not found.' }); return; }
+
+    const updated = await Post.findOneAndUpdate(
+      { _id: post._id, 'comments._id': req.params.commentId },
+      {
+        $push: {
+          'comments.$.replies': {
+            user: req.user!._id,
+            content: content.trim(),
+            createdAt: new Date()
+          }
+        }
+      },
+      { new: true }
+    )
+      .populate('author', 'name avatar institution role headline isVerified')
+      .populate('comments.user', 'name avatar institution role')
+      .populate('comments.replies.user', 'name avatar institution role');
+
+    // Notify comment author
+    if (comment.user.toString() !== req.user!._id.toString()) {
+      await Notification.create({
+        recipient: comment.user,
+        sender: req.user!._id,
+        type: 'comment',
+        entityId: post._id.toString(),
+        message: `${req.user!.name} replied to your comment: "${content.substring(0, 40)}..."`
+      });
+    }
+
+    res.status(201).json({ message: 'Reply added.', post: updated });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Error adding reply.', error: error.message });
   }
 });
 

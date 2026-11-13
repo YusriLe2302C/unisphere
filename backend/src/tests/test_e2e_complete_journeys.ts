@@ -39,7 +39,7 @@ const runE2EValidation = async () => {
       department: 'Computer Science',
       isVerified: true
     });
-    const tokenPublisher = jwt.sign({ id: publisher._id, email: publisher.email, role: publisher.role, institution: publisher.institution }, secret, { expiresIn: '1h' });
+    const tokenPublisher = jwt.sign({ id: publisher._id, ver: publisher.tokenVersion, email: publisher.email, role: publisher.role, institution: publisher.institution }, secret, { expiresIn: '1h' });
 
     const subscriber = await User.create({
       name: `Alice Subscriber ${ts}`,
@@ -50,7 +50,7 @@ const runE2EValidation = async () => {
       department: 'Computer Science',
       isVerified: true
     });
-    const tokenSubscriber = jwt.sign({ id: subscriber._id, email: subscriber.email, role: subscriber.role, institution: subscriber.institution }, secret, { expiresIn: '1h' });
+    const tokenSubscriber = jwt.sign({ id: subscriber._id, ver: subscriber.tokenVersion, email: subscriber.email, role: subscriber.role, institution: subscriber.institution }, secret, { expiresIn: '1h' });
 
     const student2 = await User.create({
       name: `Bob Student ${ts}`,
@@ -61,7 +61,7 @@ const runE2EValidation = async () => {
       department: 'Computer Science',
       isVerified: true
     });
-    const tokenStudent2 = jwt.sign({ id: student2._id, email: student2.email, role: student2.role, institution: student2.institution }, secret, { expiresIn: '1h' });
+    const tokenStudent2 = jwt.sign({ id: student2._id, ver: student2.tokenVersion, email: student2.email, role: student2.role, institution: student2.institution }, secret, { expiresIn: '1h' });
 
     const student3 = await User.create({
       name: `Charlie Student ${ts}`,
@@ -72,7 +72,7 @@ const runE2EValidation = async () => {
       department: 'Computer Science',
       isVerified: true
     });
-    const tokenStudent3 = jwt.sign({ id: student3._id, email: student3.email, role: student3.role, institution: student3.institution }, secret, { expiresIn: '1h' });
+    const tokenStudent3 = jwt.sign({ id: student3._id, ver: student3.tokenVersion, email: student3.email, role: student3.role, institution: student3.institution }, secret, { expiresIn: '1h' });
 
     const otherInstUser = await User.create({
       name: `Eve Outside ${ts}`,
@@ -83,7 +83,7 @@ const runE2EValidation = async () => {
       department: 'Physics',
       isVerified: true
     });
-    const tokenOther = jwt.sign({ id: otherInstUser._id, email: otherInstUser.email, role: otherInstUser.role, institution: otherInstUser.institution }, secret, { expiresIn: '1h' });
+    const tokenOther = jwt.sign({ id: otherInstUser._id, ver: otherInstUser.tokenVersion, email: otherInstUser.email, role: otherInstUser.role, institution: otherInstUser.institution }, secret, { expiresIn: '1h' });
 
     const admin = await User.create({
       name: `Global Admin ${ts}`,
@@ -93,7 +93,7 @@ const runE2EValidation = async () => {
       institution: 'Consortium University A',
       isVerified: true
     });
-    const tokenAdmin = jwt.sign({ id: admin._id, email: admin.email, role: admin.role, institution: admin.institution }, secret, { expiresIn: '1h' });
+    const tokenAdmin = jwt.sign({ id: admin._id, ver: admin.tokenVersion, email: admin.email, role: admin.role, institution: admin.institution }, secret, { expiresIn: '1h' });
 
     console.log('✓ Personas initialized.\n');
 

@@ -32,7 +32,7 @@ const runSecurityPassTests = async () => {
       department: 'Computer Science',
       isVerified: true
     });
-    const tokenA = jwt.sign({ id: studentA._id, email: studentA.email, role: studentA.role, institution: studentA.institution }, secret, { expiresIn: '1h' });
+    const tokenA = jwt.sign({ id: studentA._id, ver: studentA.tokenVersion, email: studentA.email, role: studentA.role, institution: studentA.institution }, secret, { expiresIn: '1h' });
 
     const studentB = await User.create({
       name: `Student B ${ts}`,
@@ -43,7 +43,7 @@ const runSecurityPassTests = async () => {
       department: 'Electronics',
       isVerified: true
     });
-    const tokenB = jwt.sign({ id: studentB._id, email: studentB.email, role: studentB.role, institution: studentB.institution }, secret, { expiresIn: '1h' });
+    const tokenB = jwt.sign({ id: studentB._id, ver: studentB.tokenVersion, email: studentB.email, role: studentB.role, institution: studentB.institution }, secret, { expiresIn: '1h' });
 
     const clubLeader = await User.create({
       name: `Club Leader ${ts}`,
@@ -53,7 +53,7 @@ const runSecurityPassTests = async () => {
       institution: 'RNS Institute of Technology',
       isVerified: true
     });
-    const tokenLeader = jwt.sign({ id: clubLeader._id, email: clubLeader.email, role: clubLeader.role, institution: clubLeader.institution }, secret, { expiresIn: '1h' });
+    const tokenLeader = jwt.sign({ id: clubLeader._id, ver: clubLeader.tokenVersion, email: clubLeader.email, role: clubLeader.role, institution: clubLeader.institution }, secret, { expiresIn: '1h' });
 
     console.log('PASS: Personas created successfully.');
 

@@ -52,8 +52,14 @@ const ApplicationSchema = new mongoose_1.Schema({
     },
     note: { type: String, default: '' },
     resumeLink: { type: String, default: '' },
-    reviewerNotes: { type: String, default: '' }
+    resumeFileId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'UploadedFile' },
+    reviewerNotes: { type: String, default: '' },
+    idempotencyKey: { type: String, trim: true },
+    interviewRounds: [{ name: { type: String, required: true }, scheduledAt: Date, status: { type: String, enum: ['scheduled', 'completed', 'cancelled'], default: 'scheduled' }, notes: String }],
+    selectionStatus: { type: String, enum: ['pending', 'selected', 'not_selected', 'waitlisted'], default: 'pending' },
+    offerStatus: { type: String, enum: ['not_issued', 'issued', 'accepted', 'declined', 'expired'], default: 'not_issued' },
+    history: [{ status: String, changedBy: { type: mongoose_1.Schema.Types.ObjectId, ref: 'User' }, note: String, changedAt: { type: Date, default: Date.now } }]
 }, { timestamps: true });
 // Compound index to prevent duplicate submissions from the same user for the same opportunity
-ApplicationSchema.index({ applicant: 1, opportunity: 1 }, { unique: true });
+ApplicationSchema.index({ applicant: 1, opportunity: 1, idempotencyKey: 1 }, { unique: true, sparse: true });
 exports.Application = mongoose_1.default.model('Application', ApplicationSchema);

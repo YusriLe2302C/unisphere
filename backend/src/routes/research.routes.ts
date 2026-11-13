@@ -8,6 +8,9 @@ import { Notification } from '../models/Notification.js';
 import { DeliveryService } from '../services/delivery.service.js';
 import { authenticate, optionalAuthenticate, AuthRequest } from '../middleware/auth.js';
 import { getInstitutionScope } from '../config/platform.config.js';
+import { ResearchReview } from '../models/ResearchReview.js';
+import { MentorshipBinding } from '../models/MentorshipBinding.js';
+import { UploadedFile } from '../models/UploadedFile.js';
 
 const router = Router();
 
@@ -21,8 +24,15 @@ router.get('/', optionalAuthenticate, async (req: AuthRequest, res: Response): P
     const { subject, publicationType, institution, search, page = 1, limit = 20 } = req.query;
 
     const baseScope = getInstitutionScope(req.user?.institution);
-    const filter: any = { ...baseScope };
-
+    const filter: any = { ...baseScope, $or: [
+      { lifecycleStatus: 'published' },
+      { lifecycleStatus: { $exists: false } }
+    ] };
+    const authorFilter = req.query.authorId || req.query.author;
+    if (typeof authorFilter === 'string' && authorFilter) {
+      filter.$and = filter.$and || [];
+      filter.$and.push({ $or: [{ primaryAuthorId: authorFilter }, { submittedBy: authorFilter }, { authorIds: authorFilter }] });
+    }
     if (subject && subject !== 'All') {
       filter.subject = subject;
     }
@@ -458,6 +468,7 @@ router.post('/collaborations/:id/apply', authenticate, async (req: AuthRequest, 
 
     collaboration.applications.push(newApp as any);
     await collaboration.save();
+    const savedApplication = collaboration.applications[collaboration.applications.length - 1];
 
     // Notify Principal Investigator
     await Notification.create({
@@ -481,7 +492,7 @@ router.post('/collaborations/:id/apply', authenticate, async (req: AuthRequest, 
 
     res.status(201).json({
       message: 'Collaboration application submitted successfully!',
-      application: newApp
+      application: savedApplication
     });
   } catch (error: any) {
     res.status(500).json({ message: 'Error submitting application.', error: error.message });
@@ -799,6 +810,11 @@ router.get('/:id', optionalAuthenticate, async (req: AuthRequest, res: Response)
       return;
     }
 
+    const requesterId = req.user?._id?.toString();
+    const isOwner = Boolean(requesterId && paper.submittedBy.toString() === requesterId);
+    const isReviewer = Boolean(requesterId && (paper.assignedProctorId?.toString() === requesterId || paper.assignedProjectGuideId?.toString() === requesterId || (paper.assignedProjectGuideIds || []).some(id => id.toString() === requesterId)));
+    if (paper.lifecycleStatus !== 'published' && !isOwner && !isReviewer && !['admin','dean','principal','superadmin'].includes(req.user?.role || '')) { res.status(404).json({ message: 'Research publication not found.' }); return; }
+
     // Enforce private institutional restriction
     if (paper.visibility === 'institution-only') {
       if (!req.user || req.user.institution !== paper.institution) {
@@ -840,33 +856,50 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response): Promise<
       ? authors 
       : [{ name: req.user!.name, user: req.user!._id, institution: req.user!.institution }];
 
-    const newPaper = await ResearchPaper.create({
-      title: title.trim(),
-      abstract: abstract.trim(),
-      authors: authorList,
-      publicationType: publicationType || 'Preprint',
-      subject: subject.trim(),
-      doi: (doi || '').trim(),
-      externalUrl: (externalUrl || '').trim(),
-      pdfUrl: (pdfUrl || '').trim(),
-      datasetUrl: (datasetUrl || '').trim(),
-      tags: Array.isArray(tags) ? tags : [],
-      institution: req.user!.institution,
-      visibility: visibility || 'public',
-      submittedBy: req.user!._id
-    });
+    if (req.body.fileAttachmentId) {
+      const file = await UploadedFile.findOne({ _id: req.body.fileAttachmentId, uploaderId: req.user!._id, associatedEntityType: 'research_paper', isQuarantined: false, virusScanClean: true });
+      if (!file) { res.status(403).json({ message: 'PDF attachment must be a clean research_paper upload owned by the author.' }); return; }
+    }
+    if (req.body.datasetFileId) {
+      const file = await UploadedFile.findOne({ _id: req.body.datasetFileId, uploaderId: req.user!._id, associatedEntityType: 'research_dataset', isQuarantined: false, virusScanClean: true });
+      if (!file) { res.status(403).json({ message: 'Dataset must be a clean research_dataset upload owned by the author.' }); return; }
+    }
 
+    const isStudent = req.user!.role === 'student';
+    const proctor = isStudent ? await MentorshipBinding.findOne({ student: req.user!._id, assignmentType: 'proctor', status: 'active' }) : null;
+    const guides = isStudent ? await MentorshipBinding.find({ student: req.user!._id, assignmentType: 'project_guide', status: 'active' }) : [];
+    if (isStudent && (!proctor || !guides.length)) { res.status(409).json({ message: 'Active Proctor and Project Guide assignments are required before submission.' }); return; }
+    const newPaper = await ResearchPaper.create({
+      title: title.trim(), abstract: abstract.trim(), authors: authorList,
+      publicationType: publicationType || 'Preprint', subject: subject.trim(),
+      ...(doi?.trim() ? { doi: doi.trim() } : {}), externalUrl: (externalUrl || '').trim(),
+      pdfUrl: (pdfUrl || '').trim(), datasetUrl: (datasetUrl || '').trim(),
+      tags: Array.isArray(tags) ? tags : [], institution: req.user!.institution,
+      visibility: isStudent ? 'institution-only' : (visibility || 'public'), submittedBy: req.user!._id,
+      primaryAuthorId: req.user!._id,
+      authorIds: [...new Set([req.user!._id.toString(), ...authorList.map((a: any) => a.user?.toString()).filter(Boolean)])],
+      isStudentSubmission: isStudent, lifecycleStatus: isStudent ? 'pending_proctor' : 'published',
+      fileAttachmentId: req.body.fileAttachmentId,
+      datasetFileId: req.body.datasetFileId,
+      ...(isStudent ? { assignedProctorId: proctor!.faculty, assignedProjectGuideId: guides[0].faculty,
+        assignedProjectGuideIds: guides.map(g => g.faculty), revisionRound: 1,
+        reviewHistory: [{ revisionRound: 1, submittedAt: new Date(), submittedBy: req.user!._id }] } : {})
+    });
+    if (isStudent) {
+      await DeliveryService.deliverContentNotification({ specificRecipients: [proctor!.faculty, ...guides.map(g => g.faculty)], senderId: req.user!._id, type: 'system', entityId: newPaper._id.toString(), message: `Research submission requires review: ${newPaper.title}` });
+    }
     const populated = await ResearchPaper.findById(newPaper._id)
       .populate('submittedBy', 'name avatar institution role headline isVerified');
 
     // Notify subject & author subscribers
     await DeliveryService.deliverContentNotification({
-      targets: [
+      targets: req.user!.role === 'student' ? undefined : [
         { targetType: 'research_subject', targetId: newPaper.subject },
         { targetType: 'researcher', targetId: req.user!._id.toString() }
       ],
       senderId: req.user!._id,
-      type: 'research_publication',
+      specificRecipients: req.user!.role === 'student' ? [proctor!.faculty, ...guides.map(g => g.faculty)] : undefined,
+      type: req.user!.role === 'student' ? 'system' : 'research_publication',
       entityId: newPaper._id.toString(),
       message: `🔬 New Publication in ${newPaper.subject}: "${newPaper.title}"`,
       visibility: newPaper.visibility,
@@ -874,7 +907,7 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response): Promise<
     });
 
     res.status(201).json({
-      message: 'Research publication archived successfully.',
+      message: isStudent ? 'Research submission sent for review.' : 'Research publication archived successfully.',
       paper: populated
     });
   } catch (error: any) {
@@ -895,6 +928,10 @@ router.put('/:id', authenticate, async (req: AuthRequest, res: Response): Promis
     const isOwner = paper.submittedBy.toString() === userId;
     const isAdmin = req.user!.role === 'admin';
 
+    if (paper.isStudentSubmission && paper.lifecycleStatus !== 'rejected') {
+      res.status(409).json({ message: 'Student submissions may only be edited after rejection; use the resubmission workflow.' }); return;
+    }
+
     if (!isOwner && !isAdmin) {
       res.status(403).json({ message: 'Forbidden: You do not have permission to modify this publication.' });
       return;
@@ -906,7 +943,7 @@ router.put('/:id', authenticate, async (req: AuthRequest, res: Response): Promis
     if (authors && Array.isArray(authors)) paper.authors = authors;
     if (publicationType) paper.publicationType = publicationType;
     if (subject) paper.subject = subject.trim();
-    if (doi !== undefined) paper.doi = doi.trim();
+    if (doi !== undefined) paper.doi = doi.trim() || undefined;
     if (externalUrl !== undefined) paper.externalUrl = externalUrl.trim();
     if (pdfUrl !== undefined) paper.pdfUrl = pdfUrl.trim();
     if (datasetUrl !== undefined) paper.datasetUrl = datasetUrl.trim();
@@ -933,6 +970,10 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response): Pro
     const userId = req.user!._id.toString();
     const isOwner = paper.submittedBy.toString() === userId;
     const isAdmin = req.user!.role === 'admin';
+
+    if (paper.isStudentSubmission && !['rejected','archived'].includes(paper.lifecycleStatus || '')) {
+      res.status(409).json({ message: 'Student submissions cannot be deleted during review or after publication.' }); return;
+    }
 
     if (!isOwner && !isAdmin) {
       res.status(403).json({ message: 'Forbidden: Only the author or administrator can delete this publication.' });

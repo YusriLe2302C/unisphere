@@ -66,6 +66,17 @@ const OpportunitySchema = new mongoose_1.Schema({
     community: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Community', default: null, index: true },
     deadline: { type: String, default: '' },
     applyUrl: { type: String, default: '' },
+    isPlacementDrive: { type: Boolean, default: false, index: true },
+    companyDetails: { website: String, description: String, contactEmail: String },
+    requiredSkills: { type: [String], default: [] },
+    minimumCgpa: { type: Number, min: 0, max: 10 },
+    eligibleBranches: { type: [String], default: [] },
+    eligibleBatches: { type: [String], default: [] },
+    requiresResume: { type: Boolean, default: false },
+    package: { type: String, default: '' },
+    applicationDeadline: { type: Date },
+    isActive: { type: Boolean, default: true, index: true },
     postedBy: { type: mongoose_1.Schema.Types.ObjectId, ref: 'User', required: true, index: true }
 }, { timestamps: true });
+OpportunitySchema.index({ institution: 1, isPlacementDrive: 1, isActive: 1, applicationDeadline: 1 });
 exports.Opportunity = mongoose_1.default.model('Opportunity', OpportunitySchema);

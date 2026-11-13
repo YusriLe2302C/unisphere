@@ -8,11 +8,8 @@ const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const User_js_1 = require("../models/User.js");
 const getJwtSecret = () => {
     const secret = process.env.JWT_SECRET;
-    if (!secret) {
-        if (process.env.NODE_ENV === 'production') {
-            throw new Error('FATAL SECURITY ERROR: JWT_SECRET environment variable is missing in production!');
-        }
-        return 'super_secret_uniglobe_hackathon_jwt_key_2026';
+    if (!secret || secret.length < 32) {
+        throw new Error('FATAL SECURITY ERROR: JWT_SECRET is missing or too short');
     }
     return secret;
 };
@@ -20,16 +17,26 @@ exports.getJwtSecret = getJwtSecret;
 const authenticate = async (req, res, next) => {
     try {
         const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        if (!authHeader?.startsWith('Bearer ')) {
             res.status(401).json({ message: 'Authentication required. No token provided.' });
             return;
         }
         const token = authHeader.split(' ')[1];
         const secret = (0, exports.getJwtSecret)();
         const decoded = jsonwebtoken_1.default.verify(token, secret);
-        const user = await User_js_1.User.findById(decoded.id).select('-password');
+        const user = await User_js_1.User.findById(decoded.id).select('-password -emailVerificationToken -passwordResetToken');
         if (!user) {
             res.status(401).json({ message: 'User belonging to this token no longer exists.' });
+            return;
+        }
+        // Token revocation via tokenVersion
+        if (decoded.ver !== user.tokenVersion) {
+            res.status(401).json({ message: 'Token has been revoked. Please log in again.' });
+            return;
+        }
+        // Block suspended / deactivated users
+        if (!user.isActive || user.disciplinaryStatus === 'suspended') {
+            res.status(403).json({ message: 'Account is suspended. Contact your institution administrator.' });
             return;
         }
         req.user = user;
@@ -40,25 +47,21 @@ const authenticate = async (req, res, next) => {
     }
 };
 exports.authenticate = authenticate;
-/**
- * Optional authentication: Attaches req.user if a valid token is provided,
- * but allows the request to continue unauthenticated if no token is present.
- */
 const optionalAuthenticate = async (req, _res, next) => {
     try {
         const authHeader = req.headers.authorization;
-        if (authHeader && authHeader.startsWith('Bearer ')) {
+        if (authHeader?.startsWith('Bearer ')) {
             const token = authHeader.split(' ')[1];
             const secret = (0, exports.getJwtSecret)();
             const decoded = jsonwebtoken_1.default.verify(token, secret);
-            const user = await User_js_1.User.findById(decoded.id).select('-password');
-            if (user) {
+            const user = await User_js_1.User.findById(decoded.id).select('-password -emailVerificationToken -passwordResetToken');
+            if (user && user.isActive && user.disciplinaryStatus !== 'suspended' && decoded.ver === user.tokenVersion) {
                 req.user = user;
             }
         }
     }
     catch {
-        // Ignore invalid token on optional auth
+        // Ignore on optional auth
     }
     next();
 };
@@ -69,9 +72,11 @@ const requireRole = (roles) => {
             res.status(401).json({ message: 'Authentication required.' });
             return;
         }
+        if (req.user.role === 'superadmin')
+            return next();
         if (!roles.includes(req.user.role)) {
             res.status(403).json({
-                message: `Forbidden: Action requires one of [${roles.join(', ')}] roles. Your role is ${req.user.role}.`
+                message: `Forbidden: requires one of [${roles.join(', ')}]. Your role: ${req.user.role}.`
             });
             return;
         }

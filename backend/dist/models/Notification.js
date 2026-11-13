@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.Notification = void 0;
+exports.NotificationPreference = exports.Notification = void 0;
 const mongoose_1 = __importStar(require("mongoose"));
 const NotificationSchema = new mongoose_1.Schema({
     recipient: { type: mongoose_1.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
@@ -52,6 +52,7 @@ const NotificationSchema = new mongoose_1.Schema({
             'subscription_content',
             'announcement',
             'schedule_change',
+            'calendar_change',
             'research_publication',
             'collaboration_invite',
             'collaboration_request',
@@ -61,6 +62,22 @@ const NotificationSchema = new mongoose_1.Schema({
     },
     message: { type: String, required: true },
     entityId: { type: String, default: '' },
-    isRead: { type: Boolean, default: false }
+    isRead: { type: Boolean, default: false },
+    deliveryStatus: { type: String, enum: ['pending', 'delivered', 'failed'], default: 'pending', index: true },
+    attempts: { type: Number, default: 0, min: 0 },
+    lastAttemptAt: Date,
+    nextAttemptAt: Date,
+    failureReason: { type: String, default: '' },
+    idempotencyKey: { type: String, trim: true }
 }, { timestamps: true });
 exports.Notification = mongoose_1.default.model('Notification', NotificationSchema);
+const NotificationPreferenceSchema = new mongoose_1.Schema({
+    userId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
+    inAppAlerts: { type: Boolean, default: true },
+    opportunityAlerts: { type: Boolean, default: true },
+    eventAlerts: { type: Boolean, default: true },
+    researchAlerts: { type: Boolean, default: true },
+    communityAlerts: { type: Boolean, default: true },
+    messagingAlerts: { type: Boolean, default: true }
+}, { timestamps: true });
+exports.NotificationPreference = mongoose_1.default.models.NotificationPreference || mongoose_1.default.model('NotificationPreference', NotificationPreferenceSchema);

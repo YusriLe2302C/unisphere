@@ -1,157 +1,97 @@
 import { Router, Request, Response } from 'express';
-import bcrypt from 'bcryptjs';
-import jwt, { SignOptions } from 'jsonwebtoken';
-import { User } from '../models/User.js';
-import { authenticate, AuthRequest, getJwtSecret } from '../middleware/auth.js';
+import rateLimit from 'express-rate-limit';
+import { authenticate, requireRole } from '../middleware/auth.js';
+import {
+  validateRegister,
+  validateLogin,
+  validatePasswordReset,
+  validateAuthorityCreate,
+  validateRoleAssignment
+} from '../validators/auth.validator.js';
+import * as AuthController from '../controllers/auth.controller.js';
 
 const router = Router();
 
-const generateToken = (userId: string): string => {
-  const secret = getJwtSecret();
-  const expiresIn = (process.env.JWT_EXPIRES_IN || '7d') as SignOptions['expiresIn'];
-  return jwt.sign({ id: userId }, secret, { expiresIn });
-};
-
-// Register
-router.post('/register', async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { name, email, password, role, institution, department, graduationYear, headline, bio } = req.body;
-
-    if (!name || !email || !password || !institution) {
-      res.status(400).json({ message: 'Name, email, password, and institution are required.' });
-      return;
-    }
-
-    // Role whitelisting: NEVER allow unprivileged users to register directly as admin
-    const allowedRoles = ['student', 'faculty', 'alumni'];
-    const chosenRole = (role || 'student').toLowerCase();
-    if (!allowedRoles.includes(chosenRole)) {
-      res.status(400).json({ message: 'Invalid role. Permitted registration roles are student, faculty, and alumni.' });
-      return;
-    }
-
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
-    if (existingUser) {
-      res.status(400).json({ message: 'An account with this email already exists.' });
-      return;
-    }
-
-    // Derive domain from email for academic credibility
-    const emailDomain = email.includes('@') ? email.split('@')[1].toLowerCase() : '';
-    // Institutional verification: Academic domains (.edu, .ac.in, etc.) or university domains auto-verify
-    const isAcademic = emailDomain.endsWith('.edu') || emailDomain.endsWith('.ac.in') || emailDomain.includes('univ') || emailDomain.includes('college') || emailDomain.includes('rnsit');
-
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    const newUser = await User.create({
-      name: name.trim(),
-      email: email.toLowerCase().trim(),
-      password: hashedPassword,
-      role: chosenRole,
-      institution: institution.trim(),
-      institutionDomain: emailDomain,
-      isVerified: isAcademic, // Verified based on institutional domain
-      department: department || 'General Studies',
-      graduationYear: graduationYear ? Number(graduationYear) : undefined,
-      headline: headline || `${chosenRole.toUpperCase()} at ${institution}`,
-      bio: bio || '',
-      skills: ['Research', 'Collaboration'],
-      interests: ['Academic Networking', 'Innovation']
-    });
-
-    const token = generateToken(newUser._id.toString());
-    const userJson = newUser.toObject();
-    delete (userJson as any).password;
-
-    res.status(201).json({
-      message: isAcademic 
-        ? 'Account created and institution verified successfully.'
-        : 'Account created. Institutional verification pending administrative review.',
-      token,
-      user: userJson
-    });
-  } catch (error: any) {
-    res.status(500).json({ message: 'Server error during registration.', error: error.message });
-  }
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many requests. Please try again in 15 minutes.' }
 });
+
+const strictLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many attempts. Please try again in 1 hour.' }
+});
+
+// Public registration — student, faculty, alumni only
+router.post('/register', authLimiter, validateRegister, AuthController.register);
 
 // Login
-router.post('/login', async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { email, password } = req.body;
+router.post('/login', authLimiter, validateLogin, AuthController.login);
 
-    if (!email || !password) {
-      res.status(400).json({ message: 'Email and password are required.' });
-      return;
-    }
+// Logout (revokes token via tokenVersion increment)
+router.post('/logout', authenticate, AuthController.logout);
 
-    const user = await User.findOne({ email: email.toLowerCase() });
-    if (!user) {
-      res.status(401).json({ message: 'Invalid email or password.' });
-      return;
-    }
+// Current user
+router.get('/me', authenticate, AuthController.me);
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      res.status(401).json({ message: 'Invalid email or password.' });
-      return;
-    }
+// Email verification
+router.get('/verify-email/:token', AuthController.verifyEmail);
 
-    const token = generateToken(user._id.toString());
-    const userJson = user.toObject();
-    delete (userJson as any).password;
+// Password reset flow
+router.post('/forgot-password', strictLimiter, AuthController.forgotPassword);
+router.post('/reset-password', strictLimiter, validatePasswordReset, AuthController.resetPassword);
 
-    res.json({
-      message: 'Logged in successfully.',
-      token,
-      user: userJson
-    });
-  } catch (error: any) {
-    res.status(500).json({ message: 'Server error during login.', error: error.message });
+// Admin: create authority accounts (dean, principal, admin, faculty, etc.)
+router.post(
+  '/create-authority',
+  authenticate,
+  requireRole(['admin', 'superadmin']),
+  validateAuthorityCreate,
+  AuthController.createAuthority
+);
+
+// Admin: assign primary role to existing user
+router.put(
+  '/users/:userId/role',
+  authenticate,
+  requireRole(['admin', 'superadmin','dean','principal']),
+  validateRoleAssignment,
+  AuthController.assignRole
+);
+
+// Admin/Dean/Principal: assign scoped responsibilities (no new account created)
+router.put(
+  '/users/:userId/responsibilities',
+  authenticate,
+  requireRole(['admin', 'superadmin', 'dean', 'principal']),
+  AuthController.assignResponsibilities
+);
+
+// Demo login (dev/test only)
+router.post('/demo-login', authLimiter, async (req: Request, res: Response): Promise<void> => {
+  if (process.env.NODE_ENV === 'production') {
+    res.status(403).json({ message: 'Demo login disabled in production.' });
+    return;
   }
-});
-
-// Demo Login (Instant role switching for local testing & demos)
-router.post('/demo-login', async (req: Request, res: Response): Promise<void> => {
-  try {
-    if (process.env.NODE_ENV === 'production') {
-      res.status(403).json({ message: 'Demo login is strictly disabled in production environments.' });
-      return;
-    }
-
-    const { role } = req.body; // 'student', 'alumni', 'faculty', 'admin'
-    const targetRole = role || 'student';
-
-    // Guard privileged admin switching: require explicit ENABLE_ADMIN_DEMO or dev key
-    if (targetRole === 'admin' && process.env.ENABLE_ADMIN_DEMO !== 'true') {
-      res.status(403).json({ message: 'Admin demo login requires administrator credentials or ENABLE_ADMIN_DEMO=true.' });
-      return;
-    }
-
-    const user = await User.findOne({ role: targetRole });
-    if (!user) {
-      res.status(404).json({ message: `No demo account found for role: ${targetRole}. Please run seed script.` });
-      return;
-    }
-
-    const token = generateToken(user._id.toString());
-    const userJson = user.toObject();
-    delete (userJson as any).password;
-
-    res.json({
-      message: `Signed in as Demo ${targetRole.toUpperCase()}`,
-      token,
-      user: userJson
-    });
-  } catch (error: any) {
-    res.status(500).json({ message: 'Server error during demo login.', error: error.message });
+  const { User } = await import('../models/User.js');
+  const { generateToken } = await import('../services/auth.service.js');
+  const { role } = req.body;
+  const targetRole = role || 'student';
+  const user = await User.findOne({ role: targetRole });
+  if (!user) {
+    res.status(404).json({ message: `No demo account for role: ${targetRole}. Run seed script.` });
+    return;
   }
-});
-
-// Current Authenticated User
-router.get('/me', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
-  res.json({ user: req.user });
+  const token = generateToken(user._id.toString(), user.tokenVersion);
+  const userObj = user.toObject() as any;
+  delete userObj.password;
+  res.json({ message: `Demo login as ${targetRole}`, token, user: userObj });
 });
 
 export default router;

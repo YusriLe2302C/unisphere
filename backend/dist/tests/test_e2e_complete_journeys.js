@@ -36,7 +36,7 @@ const runE2EValidation = async () => {
             department: 'Computer Science',
             isVerified: true
         });
-        const tokenPublisher = jsonwebtoken_1.default.sign({ id: publisher._id, email: publisher.email, role: publisher.role, institution: publisher.institution }, secret, { expiresIn: '1h' });
+        const tokenPublisher = jsonwebtoken_1.default.sign({ id: publisher._id, ver: publisher.tokenVersion, email: publisher.email, role: publisher.role, institution: publisher.institution }, secret, { expiresIn: '1h' });
         const subscriber = await User_js_1.User.create({
             name: `Alice Subscriber ${ts}`,
             email: `alice_${ts}@cambridge.ac.in`,
@@ -46,7 +46,7 @@ const runE2EValidation = async () => {
             department: 'Computer Science',
             isVerified: true
         });
-        const tokenSubscriber = jsonwebtoken_1.default.sign({ id: subscriber._id, email: subscriber.email, role: subscriber.role, institution: subscriber.institution }, secret, { expiresIn: '1h' });
+        const tokenSubscriber = jsonwebtoken_1.default.sign({ id: subscriber._id, ver: subscriber.tokenVersion, email: subscriber.email, role: subscriber.role, institution: subscriber.institution }, secret, { expiresIn: '1h' });
         const student2 = await User_js_1.User.create({
             name: `Bob Student ${ts}`,
             email: `bob_${ts}@cambridge.ac.in`,
@@ -56,7 +56,7 @@ const runE2EValidation = async () => {
             department: 'Computer Science',
             isVerified: true
         });
-        const tokenStudent2 = jsonwebtoken_1.default.sign({ id: student2._id, email: student2.email, role: student2.role, institution: student2.institution }, secret, { expiresIn: '1h' });
+        const tokenStudent2 = jsonwebtoken_1.default.sign({ id: student2._id, ver: student2.tokenVersion, email: student2.email, role: student2.role, institution: student2.institution }, secret, { expiresIn: '1h' });
         const student3 = await User_js_1.User.create({
             name: `Charlie Student ${ts}`,
             email: `charlie_${ts}@cambridge.ac.in`,
@@ -66,7 +66,7 @@ const runE2EValidation = async () => {
             department: 'Computer Science',
             isVerified: true
         });
-        const tokenStudent3 = jsonwebtoken_1.default.sign({ id: student3._id, email: student3.email, role: student3.role, institution: student3.institution }, secret, { expiresIn: '1h' });
+        const tokenStudent3 = jsonwebtoken_1.default.sign({ id: student3._id, ver: student3.tokenVersion, email: student3.email, role: student3.role, institution: student3.institution }, secret, { expiresIn: '1h' });
         const otherInstUser = await User_js_1.User.create({
             name: `Eve Outside ${ts}`,
             email: `eve_${ts}@other.edu`,
@@ -76,7 +76,7 @@ const runE2EValidation = async () => {
             department: 'Physics',
             isVerified: true
         });
-        const tokenOther = jsonwebtoken_1.default.sign({ id: otherInstUser._id, email: otherInstUser.email, role: otherInstUser.role, institution: otherInstUser.institution }, secret, { expiresIn: '1h' });
+        const tokenOther = jsonwebtoken_1.default.sign({ id: otherInstUser._id, ver: otherInstUser.tokenVersion, email: otherInstUser.email, role: otherInstUser.role, institution: otherInstUser.institution }, secret, { expiresIn: '1h' });
         const admin = await User_js_1.User.create({
             name: `Global Admin ${ts}`,
             email: `admin_${ts}@hub.org`,
@@ -85,7 +85,7 @@ const runE2EValidation = async () => {
             institution: 'Consortium University A',
             isVerified: true
         });
-        const tokenAdmin = jsonwebtoken_1.default.sign({ id: admin._id, email: admin.email, role: admin.role, institution: admin.institution }, secret, { expiresIn: '1h' });
+        const tokenAdmin = jsonwebtoken_1.default.sign({ id: admin._id, ver: admin.tokenVersion, email: admin.email, role: admin.role, institution: admin.institution }, secret, { expiresIn: '1h' });
         console.log('✓ Personas initialized.\n');
         // JOURNEY 1 & 2: Publisher creates announcement, subscriber receives feed update and alert
         console.log('--- Journey 1 & 2: Publisher Announcement, Audience Selection, & Subscriber Delivery ---');

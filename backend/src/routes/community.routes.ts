@@ -118,6 +118,7 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response): Promise<
       slug,
       description: description.trim(),
       category: category || 'General',
+      institution: req.user!.institution,
       banner: banner || undefined,
       avatar: avatar || undefined,
       rules: rules || undefined,
@@ -159,9 +160,29 @@ router.post('/:id/join', authenticate, async (req: AuthRequest, res: Response): 
 
     const userId = req.user!._id;
     const isMember = community.members.some(id => id.toString() === userId.toString());
-
     if (isMember) {
       res.status(400).json({ message: 'You are already a member of this community.' });
+      return;
+    }
+
+    const isPending = community.pendingMembers.some(id => id.toString() === userId.toString());
+    if (isPending) {
+      res.status(400).json({ message: 'Your membership request is already pending approval.' });
+      return;
+    }
+
+    if (community.requiresApproval) {
+      await Community.findByIdAndUpdate(community._id, { $addToSet: { pendingMembers: userId } });
+      if (community.creator.toString() !== userId.toString()) {
+        await Notification.create({
+          recipient: community.creator,
+          sender: userId,
+          type: 'community_join',
+          entityId: community._id.toString(),
+          message: `${req.user!.name} requested to join ${community.name}. Approve or deny in community settings.`
+        });
+      }
+      res.json({ message: 'Membership request submitted. Awaiting moderator approval.', status: 'pending' });
       return;
     }
 
@@ -174,21 +195,11 @@ router.post('/:id/join', authenticate, async (req: AuthRequest, res: Response): 
 
     // Auto-subscribe member to community updates
     await Subscription.findOneAndUpdate(
-      {
-        user: userId,
-        targetType: 'community',
-        targetId: community._id.toString()
-      },
-      {
-        $set: {
-          targetName: community.name,
-          preferences: { inAppAlerts: true, emailAlerts: false }
-        }
-      },
+      { user: userId, targetType: 'community', targetId: community._id.toString() },
+      { $set: { targetName: community.name, preferences: { inAppAlerts: true, emailAlerts: false } } },
       { upsert: true }
     );
 
-    // Notify creator
     if (community.creator.toString() !== userId.toString()) {
       await Notification.create({
         recipient: community.creator,
@@ -202,6 +213,144 @@ router.post('/:id/join', authenticate, async (req: AuthRequest, res: Response): 
     res.json({ message: `Joined ${community.name} successfully.`, memberCount: updated?.members.length || 0 });
   } catch (error: any) {
     res.status(500).json({ message: 'Error joining community.', error: error.message });
+  }
+});
+
+// APPROVE / DENY pending membership request
+router.post('/:id/members/:userId/approve', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const community = await Community.findById(req.params.id);
+    if (!community) { res.status(404).json({ message: 'Community not found.' }); return; }
+
+    const requesterId = req.user!._id.toString();
+    const isCreator = community.creator.toString() === requesterId;
+    const isMod = community.moderators.some(id => id.toString() === requesterId);
+    const isAdmin = req.user!.role === 'admin' || req.user!.role === 'superadmin';
+    if (!isCreator && !isMod && !isAdmin) {
+      res.status(403).json({ message: 'Forbidden: Only moderators can approve membership requests.' });
+      return;
+    }
+
+    const targetUserId = req.params.userId;
+    const isPending = community.pendingMembers.some(id => id.toString() === targetUserId);
+    if (!isPending) {
+      res.status(400).json({ message: 'No pending request from this user.' });
+      return;
+    }
+
+    const { action } = req.body; // 'approve' | 'deny'
+    if (action === 'deny') {
+      await Community.findByIdAndUpdate(community._id, { $pull: { pendingMembers: targetUserId } });
+      res.json({ message: 'Membership request denied.' });
+      return;
+    }
+
+    const updated = await Community.findByIdAndUpdate(
+      community._id,
+      { $pull: { pendingMembers: targetUserId }, $addToSet: { members: targetUserId } },
+      { new: true }
+    );
+
+    await Subscription.findOneAndUpdate(
+      { user: targetUserId, targetType: 'community', targetId: community._id.toString() },
+      { $set: { targetName: community.name, preferences: { inAppAlerts: true, emailAlerts: false } } },
+      { upsert: true }
+    );
+
+    await Notification.create({
+      recipient: targetUserId,
+      sender: req.user!._id,
+      type: 'community_join',
+      entityId: community._id.toString(),
+      message: `Your request to join ${community.name} has been approved!`
+    });
+
+    res.json({ message: 'Membership approved.', memberCount: updated?.members.length || 0 });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Error processing membership request.', error: error.message });
+  }
+});
+
+// GET pending membership requests
+router.get('/:id/members/pending', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const community = await Community.findById(req.params.id)
+      .populate('pendingMembers', 'name avatar institution role department');
+    if (!community) { res.status(404).json({ message: 'Community not found.' }); return; }
+
+    const requesterId = req.user!._id.toString();
+    const isCreator = community.creator.toString() === requesterId;
+    const isMod = community.moderators.some(id => id.toString() === requesterId);
+    const isAdmin = req.user!.role === 'admin' || req.user!.role === 'superadmin';
+    if (!isCreator && !isMod && !isAdmin) {
+      res.status(403).json({ message: 'Forbidden: Only moderators can view pending requests.' });
+      return;
+    }
+
+    res.json({ pendingMembers: community.pendingMembers });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Error fetching pending members.', error: error.message });
+  }
+});
+
+// ADD CLUB ADVISOR (Creator or Admin)
+router.post('/:id/advisors/:userId', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const community = await Community.findById(req.params.id);
+    if (!community) { res.status(404).json({ message: 'Community not found.' }); return; }
+
+    const requesterId = req.user!._id.toString();
+    const isCreator = community.creator.toString() === requesterId;
+    const isAdmin = req.user!.role === 'admin' || req.user!.role === 'superadmin';
+    if (!isCreator && !isAdmin) {
+      res.status(403).json({ message: 'Forbidden: Only the creator or admin can assign club advisors.' });
+      return;
+    }
+
+    const { User: UserModel } = await import('../models/User.js');
+    const advisor = await UserModel.findById(req.params.userId);
+    if (!advisor) { res.status(404).json({ message: 'User not found.' }); return; }
+    const hasAdvisorRole = advisor.role === 'faculty' || (advisor.responsibilities || []).includes('club_advisor');
+    if (!hasAdvisorRole) {
+      res.status(400).json({ message: 'Club advisors must be faculty or have club_advisor responsibility.' });
+      return;
+    }
+
+    const updated = await Community.findByIdAndUpdate(
+      community._id,
+      { $addToSet: { clubAdvisors: req.params.userId, members: req.params.userId } },
+      { new: true }
+    );
+
+    res.json({ message: 'Club advisor assigned.', clubAdvisors: updated?.clubAdvisors });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Error assigning club advisor.', error: error.message });
+  }
+});
+
+// REMOVE CLUB ADVISOR
+router.delete('/:id/advisors/:userId', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const community = await Community.findById(req.params.id);
+    if (!community) { res.status(404).json({ message: 'Community not found.' }); return; }
+
+    const requesterId = req.user!._id.toString();
+    const isCreator = community.creator.toString() === requesterId;
+    const isAdmin = req.user!.role === 'admin' || req.user!.role === 'superadmin';
+    if (!isCreator && !isAdmin) {
+      res.status(403).json({ message: 'Forbidden: Only the creator or admin can remove club advisors.' });
+      return;
+    }
+
+    const updated = await Community.findByIdAndUpdate(
+      community._id,
+      { $pull: { clubAdvisors: req.params.userId } },
+      { new: true }
+    );
+
+    res.json({ message: 'Club advisor removed.', clubAdvisors: updated?.clubAdvisors });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Error removing club advisor.', error: error.message });
   }
 });
 

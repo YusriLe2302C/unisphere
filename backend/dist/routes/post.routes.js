@@ -12,6 +12,33 @@ const router = (0, express_1.Router)();
 const escapeRegex = (text) => {
     return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
 };
+// GET Institution-Specific Feed
+router.get('/feed/institution', auth_js_1.authenticate, async (req, res) => {
+    try {
+        const { page = 1, limit = 20, category, tag } = req.query;
+        const user = req.user;
+        const filter = { institution: user.institution };
+        if (category && category !== 'All')
+            filter.category = category;
+        if (tag)
+            filter.tags = { $in: [tag] };
+        const skip = (Number(page) - 1) * Number(limit);
+        const [posts, total] = await Promise.all([
+            Post_js_1.Post.find(filter)
+                .populate('author', 'name avatar institution role headline isVerified')
+                .populate('comments.user', 'name avatar institution role')
+                .populate('community', 'name slug avatar')
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(Number(limit)),
+            Post_js_1.Post.countDocuments(filter)
+        ]);
+        res.json({ posts, total, page: Number(page), pages: Math.ceil(total / Number(limit)) });
+    }
+    catch (error) {
+        res.status(500).json({ message: 'Error retrieving institution feed.', error: error.message });
+    }
+});
 // GET Global Feed (with cross-college posts, category filter, audience, search, pagination)
 router.get('/', auth_js_1.optionalAuthenticate, async (req, res) => {
     try {
@@ -232,12 +259,12 @@ router.post('/:id/event-register', auth_js_1.authenticate, async (req, res) => {
         }
         const userId = req.user._id;
         const currentAttendees = (post.eventDetails.registeredAttendees || []).map(id => id.toString());
-        const currentWaitlist = (post.eventDetails.waitlist || []).map(id => id.toString());
+        const currentWaitlist = (post.eventDetails.waitlist || []).map((entry) => (entry?.userId || entry).toString());
         const isRegistered = currentAttendees.includes(userId.toString());
         const isWaitlisted = currentWaitlist.includes(userId.toString());
         if (isWaitlisted) {
             // Leave waitlist
-            const updated = await Post_js_1.Post.findByIdAndUpdate(post._id, { $pull: { 'eventDetails.waitlist': userId } }, { new: true });
+            const updated = await Post_js_1.Post.findByIdAndUpdate(post._id, { $pull: { 'eventDetails.waitlist': { userId } } }, { new: true });
             res.json({
                 message: 'Removed from event waitlist.',
                 isRegistered: false,
@@ -252,7 +279,8 @@ router.post('/:id/event-register', auth_js_1.authenticate, async (req, res) => {
             // Check if there is someone in waitlist to automatically promote!
             let promotedUserId = null;
             if (post.eventDetails.waitlist && post.eventDetails.waitlist.length > 0) {
-                promotedUserId = post.eventDetails.waitlist[0];
+                const firstEntry = post.eventDetails.waitlist[0];
+                promotedUserId = firstEntry?.userId || firstEntry;
             }
             // 1. Remove the cancelling user from registeredAttendees
             await Post_js_1.Post.findByIdAndUpdate(post._id, {
@@ -262,7 +290,7 @@ router.post('/:id/event-register', auth_js_1.authenticate, async (req, res) => {
             let updated;
             if (promotedUserId) {
                 await Post_js_1.Post.findByIdAndUpdate(post._id, {
-                    $pull: { 'eventDetails.waitlist': promotedUserId }
+                    $pull: { 'eventDetails.waitlist': { userId: promotedUserId } }
                 });
                 updated = await Post_js_1.Post.findByIdAndUpdate(post._id, { $addToSet: { 'eventDetails.registeredAttendees': promotedUserId } }, { new: true }).populate('author', 'name avatar institution');
                 await Notification_js_1.Notification.create({
@@ -289,7 +317,7 @@ router.post('/:id/event-register', auth_js_1.authenticate, async (req, res) => {
             if (post.eventDetails.capacity && post.eventDetails.capacity > 0) {
                 if (currentAttendees.length >= post.eventDetails.capacity) {
                     // Event full: add to waitlist!
-                    const updated = await Post_js_1.Post.findByIdAndUpdate(post._id, { $addToSet: { 'eventDetails.waitlist': userId } }, { new: true });
+                    const updated = await Post_js_1.Post.findByIdAndUpdate(post._id, { $addToSet: { 'eventDetails.waitlist': { userId, seatsRequested: 1, teamMembers: [] } } }, { new: true });
                     res.json({
                         message: 'Event is at maximum capacity. You have been added to the priority waitlist!',
                         isRegistered: false,
@@ -470,27 +498,91 @@ router.post('/:id/like', auth_js_1.authenticate, async (req, res) => {
             return;
         }
         const userId = req.user._id;
-        const isLiked = post.likes.some(id => id.toString() === userId.toString());
+        const isLiked = (post.likes || []).some(id => id.toString() === userId.toString());
         if (isLiked) {
             const updated = await Post_js_1.Post.findByIdAndUpdate(post._id, { $pull: { likes: userId } }, { new: true });
-            res.json({ message: 'Post unliked.', likesCount: updated?.likes.length || 0, isLiked: false });
+            res.json({ message: 'Post unliked.', likesCount: updated?.likes.length || 0, isLiked: false, dislikesCount: updated?.dislikes?.length || 0, isDisliked: false });
         }
         else {
-            const updated = await Post_js_1.Post.findByIdAndUpdate(post._id, { $addToSet: { likes: userId } }, { new: true });
+            // Like and remove any dislike
+            const updated = await Post_js_1.Post.findByIdAndUpdate(post._id, {
+                $addToSet: { likes: userId },
+                $pull: { dislikes: userId }
+            }, { new: true });
             if (post.author.toString() !== userId.toString()) {
                 await Notification_js_1.Notification.create({
                     recipient: post.author,
                     sender: userId,
                     type: 'like',
                     entityId: post._id.toString(),
-                    message: `${req.user.name} (${req.user.institution}) liked your post.`
+                    message: `${req.user.name} (${req.user.institution}) liked your dispatch.`
                 });
             }
-            res.json({ message: 'Post liked.', likesCount: updated?.likes.length || 0, isLiked: true });
+            res.json({ message: 'Post liked.', likesCount: updated?.likes.length || 0, isLiked: true, dislikesCount: updated?.dislikes?.length || 0, isDisliked: false });
         }
     }
     catch (error) {
         res.status(500).json({ message: 'Error updating like.', error: error.message });
+    }
+});
+// TOGGLE DISLIKE
+router.post('/:id/dislike', auth_js_1.authenticate, async (req, res) => {
+    try {
+        const post = await Post_js_1.Post.findById(req.params.id);
+        if (!post) {
+            res.status(404).json({ message: 'Post not found.' });
+            return;
+        }
+        const userId = req.user._id;
+        const isDisliked = (post.dislikes || []).some(id => id.toString() === userId.toString());
+        if (isDisliked) {
+            const updated = await Post_js_1.Post.findByIdAndUpdate(post._id, { $pull: { dislikes: userId } }, { new: true });
+            res.json({ message: 'Dislike removed.', dislikesCount: updated?.dislikes?.length || 0, isDisliked: false, likesCount: updated?.likes?.length || 0, isLiked: false });
+        }
+        else {
+            // Dislike and remove any like
+            const updated = await Post_js_1.Post.findByIdAndUpdate(post._id, {
+                $addToSet: { dislikes: userId },
+                $pull: { likes: userId }
+            }, { new: true });
+            res.json({ message: 'Post disliked.', dislikesCount: updated?.dislikes?.length || 0, isDisliked: true, likesCount: updated?.likes?.length || 0, isLiked: false });
+        }
+    }
+    catch (error) {
+        res.status(500).json({ message: 'Error updating dislike.', error: error.message });
+    }
+});
+// TOGGLE BOOKMARK / SAVE
+router.post('/:id/bookmark', auth_js_1.authenticate, async (req, res) => {
+    try {
+        const post = await Post_js_1.Post.findById(req.params.id);
+        if (!post) {
+            res.status(404).json({ message: 'Post not found.' });
+            return;
+        }
+        const userId = req.user._id;
+        const isBookmarked = (post.bookmarks || []).some(id => id.toString() === userId.toString());
+        if (isBookmarked) {
+            const updated = await Post_js_1.Post.findByIdAndUpdate(post._id, { $pull: { bookmarks: userId } }, { new: true });
+            res.json({ message: 'Post removed from saved collection.', isBookmarked: false, bookmarksCount: updated?.bookmarks?.length || 0 });
+        }
+        else {
+            const updated = await Post_js_1.Post.findByIdAndUpdate(post._id, { $addToSet: { bookmarks: userId } }, { new: true });
+            res.json({ message: 'Post saved to bookmarks!', isBookmarked: true, bookmarksCount: updated?.bookmarks?.length || 0 });
+        }
+    }
+    catch (error) {
+        res.status(500).json({ message: 'Error saving bookmark.', error: error.message });
+    }
+});
+// INCREMENT SHARE COUNT
+router.post('/:id/share', auth_js_1.optionalAuthenticate, async (req, res) => {
+    try {
+        const updated = await Post_js_1.Post.findByIdAndUpdate(req.params.id, { $inc: { sharesCount: 1 } }, { new: true });
+        res.json({ message: 'Share link tracked.', sharesCount: updated?.sharesCount || 1 });
+    }
+    catch (error) {
+        res.status(500).json({ message: 'Error tracking share.', error: error.message });
     }
 });
 // ADD COMMENT
@@ -535,6 +627,52 @@ router.post(['/:id/comments', '/:id/comment'], auth_js_1.authenticate, async (re
     }
     catch (error) {
         res.status(500).json({ message: 'Error adding comment.', error: error.message });
+    }
+});
+// ADD REPLY TO COMMENT
+router.post('/:id/comments/:commentId/replies', auth_js_1.authenticate, async (req, res) => {
+    try {
+        const { content } = req.body;
+        if (!content || !content.trim()) {
+            res.status(400).json({ message: 'Reply content cannot be empty.' });
+            return;
+        }
+        const post = await Post_js_1.Post.findById(req.params.id);
+        if (!post) {
+            res.status(404).json({ message: 'Post not found.' });
+            return;
+        }
+        const comment = post.comments.find(c => c._id?.toString() === req.params.commentId);
+        if (!comment) {
+            res.status(404).json({ message: 'Comment not found.' });
+            return;
+        }
+        const updated = await Post_js_1.Post.findOneAndUpdate({ _id: post._id, 'comments._id': req.params.commentId }, {
+            $push: {
+                'comments.$.replies': {
+                    user: req.user._id,
+                    content: content.trim(),
+                    createdAt: new Date()
+                }
+            }
+        }, { new: true })
+            .populate('author', 'name avatar institution role headline isVerified')
+            .populate('comments.user', 'name avatar institution role')
+            .populate('comments.replies.user', 'name avatar institution role');
+        // Notify comment author
+        if (comment.user.toString() !== req.user._id.toString()) {
+            await Notification_js_1.Notification.create({
+                recipient: comment.user,
+                sender: req.user._id,
+                type: 'comment',
+                entityId: post._id.toString(),
+                message: `${req.user.name} replied to your comment: "${content.substring(0, 40)}..."`
+            });
+        }
+        res.status(201).json({ message: 'Reply added.', post: updated });
+    }
+    catch (error) {
+        res.status(500).json({ message: 'Error adding reply.', error: error.message });
     }
 });
 exports.default = router;

@@ -24,11 +24,15 @@ export interface ICommunity extends Document {
   slug: string;
   description: string;
   category: string;
+  institution?: string;
   banner: string;
   avatar: string;
   creator: Types.ObjectId;
   members: Types.ObjectId[];
+  pendingMembers: Types.ObjectId[];
   moderators: Types.ObjectId[];
+  requiresApproval: boolean;
+  clubAdvisors: Types.ObjectId[];
   rules: string[];
   announcements: ICommunityAnnouncement[];
   resources: ICommunityResource[];
@@ -58,6 +62,7 @@ const CommunitySchema = new Schema<ICommunity>(
     slug: { type: String, required: true, trim: true, unique: true, lowercase: true },
     description: { type: String, required: true },
     category: { type: String, required: true, default: 'General' },
+    institution: { type: String, default: '', index: true },
     banner: {
       type: String,
       default: 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=1200&auto=format&fit=crop&q=80'
@@ -68,7 +73,10 @@ const CommunitySchema = new Schema<ICommunity>(
     },
     creator: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     members: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+    pendingMembers: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     moderators: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+    requiresApproval: { type: Boolean, default: false },
+    clubAdvisors: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     rules: { type: [String], default: ['Be respectful and collaborative', 'No spam or self-promotion without context'] },
     announcements: { type: [AnnouncementSchema], default: [] },
     resources: { type: [ResourceSchema], default: [] }

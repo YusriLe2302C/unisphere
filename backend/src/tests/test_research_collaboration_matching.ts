@@ -84,25 +84,25 @@ const runTests = async () => {
     );
 
     const piToken = jwt.sign(
-      { id: piUser._id.toString(), email: piUser.email, role: piUser.role, institution: piUser.institution, name: piUser.name },
+      { id: piUser._id.toString(), ver: piUser.tokenVersion, email: piUser.email, role: piUser.role, institution: piUser.institution, name: piUser.name },
       secret,
       { expiresIn: '1h' }
     );
 
     const supervisorToken = jwt.sign(
-      { id: supervisorUser._id.toString(), email: supervisorUser.email, role: supervisorUser.role, institution: supervisorUser.institution, name: supervisorUser.name },
+      { id: supervisorUser._id.toString(), ver: supervisorUser.tokenVersion, email: supervisorUser.email, role: supervisorUser.role, institution: supervisorUser.institution, name: supervisorUser.name },
       secret,
       { expiresIn: '1h' }
     );
 
     const studentToken = jwt.sign(
-      { id: studentUser._id.toString(), email: studentUser.email, role: studentUser.role, institution: studentUser.institution, name: studentUser.name },
+      { id: studentUser._id.toString(), ver: studentUser.tokenVersion, email: studentUser.email, role: studentUser.role, institution: studentUser.institution, name: studentUser.name },
       secret,
       { expiresIn: '1h' }
     );
 
     const unauthorizedToken = jwt.sign(
-      { id: unauthorizedStudent._id.toString(), email: unauthorizedStudent.email, role: unauthorizedStudent.role, institution: unauthorizedStudent.institution, name: unauthorizedStudent.name },
+      { id: unauthorizedStudent._id.toString(), ver: unauthorizedStudent.tokenVersion, email: unauthorizedStudent.email, role: unauthorizedStudent.role, institution: unauthorizedStudent.institution, name: unauthorizedStudent.name },
       secret,
       { expiresIn: '1h' }
     );

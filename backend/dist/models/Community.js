@@ -54,6 +54,7 @@ const CommunitySchema = new mongoose_1.Schema({
     slug: { type: String, required: true, trim: true, unique: true, lowercase: true },
     description: { type: String, required: true },
     category: { type: String, required: true, default: 'General' },
+    institution: { type: String, default: '', index: true },
     banner: {
         type: String,
         default: 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=1200&auto=format&fit=crop&q=80'
@@ -64,7 +65,10 @@ const CommunitySchema = new mongoose_1.Schema({
     },
     creator: { type: mongoose_1.Schema.Types.ObjectId, ref: 'User', required: true },
     members: [{ type: mongoose_1.Schema.Types.ObjectId, ref: 'User' }],
+    pendingMembers: [{ type: mongoose_1.Schema.Types.ObjectId, ref: 'User' }],
     moderators: [{ type: mongoose_1.Schema.Types.ObjectId, ref: 'User' }],
+    requiresApproval: { type: Boolean, default: false },
+    clubAdvisors: [{ type: mongoose_1.Schema.Types.ObjectId, ref: 'User' }],
     rules: { type: [String], default: ['Be respectful and collaborative', 'No spam or self-promotion without context'] },
     announcements: { type: [AnnouncementSchema], default: [] },
     resources: { type: [ResourceSchema], default: [] }

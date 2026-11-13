@@ -22,7 +22,13 @@ export interface IApplication extends Document {
   status: ApplicationStatus;
   note: string;
   resumeLink?: string;
+  resumeFileId?: Types.ObjectId;
   reviewerNotes?: string;
+  idempotencyKey?: string;
+  interviewRounds: Array<{ name: string; scheduledAt?: Date; status: 'scheduled'|'completed'|'cancelled'; notes?: string }>;
+  selectionStatus: 'pending'|'selected'|'not_selected'|'waitlisted';
+  offerStatus: 'not_issued'|'issued'|'accepted'|'declined'|'expired';
+  history: Array<{ status: string; changedBy: Types.ObjectId; note?: string; changedAt: Date }>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -49,12 +55,18 @@ const ApplicationSchema = new Schema<IApplication>(
     },
     note: { type: String, default: '' },
     resumeLink: { type: String, default: '' },
-    reviewerNotes: { type: String, default: '' }
+    resumeFileId: { type: Schema.Types.ObjectId, ref: 'UploadedFile' },
+    reviewerNotes: { type: String, default: '' },
+    idempotencyKey: { type: String, trim: true },
+    interviewRounds: [{ name: { type: String, required: true }, scheduledAt: Date, status: { type: String, enum: ['scheduled','completed','cancelled'], default: 'scheduled' }, notes: String }],
+    selectionStatus: { type: String, enum: ['pending','selected','not_selected','waitlisted'], default: 'pending' },
+    offerStatus: { type: String, enum: ['not_issued','issued','accepted','declined','expired'], default: 'not_issued' },
+    history: [{ status: String, changedBy: { type: Schema.Types.ObjectId, ref: 'User' }, note: String, changedAt: { type: Date, default: Date.now } }]
   },
   { timestamps: true }
 );
 
 // Compound index to prevent duplicate submissions from the same user for the same opportunity
-ApplicationSchema.index({ applicant: 1, opportunity: 1 }, { unique: true });
+ApplicationSchema.index({ applicant: 1, opportunity: 1, idempotencyKey: 1 }, { unique: true, sparse: true });
 
 export const Application = mongoose.model<IApplication>('Application', ApplicationSchema);

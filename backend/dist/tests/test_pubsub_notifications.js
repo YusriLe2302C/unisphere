@@ -46,9 +46,9 @@ const runTests = async () => {
             institution: 'Other College Institute',
             isVerified: true
         }, { upsert: true, new: true });
-        const subToken = jsonwebtoken_1.default.sign({ id: subscriberUser._id.toString(), email: subscriberUser.email, role: subscriberUser.role, institution: subscriberUser.institution, name: subscriberUser.name }, secret, { expiresIn: '1h' });
-        const pubToken = jsonwebtoken_1.default.sign({ id: publisherUser._id.toString(), email: publisherUser.email, role: publisherUser.role, institution: publisherUser.institution, name: publisherUser.name }, secret, { expiresIn: '1h' });
-        const extToken = jsonwebtoken_1.default.sign({ id: externalUser._id.toString(), email: externalUser.email, role: externalUser.role, institution: externalUser.institution, name: externalUser.name }, secret, { expiresIn: '1h' });
+        const subToken = jsonwebtoken_1.default.sign({ id: subscriberUser._id.toString(), ver: subscriberUser.tokenVersion, email: subscriberUser.email, role: subscriberUser.role, institution: subscriberUser.institution, name: subscriberUser.name }, secret, { expiresIn: '1h' });
+        const pubToken = jsonwebtoken_1.default.sign({ id: publisherUser._id.toString(), ver: publisherUser.tokenVersion, email: publisherUser.email, role: publisherUser.role, institution: publisherUser.institution, name: publisherUser.name }, secret, { expiresIn: '1h' });
+        const extToken = jsonwebtoken_1.default.sign({ id: externalUser._id.toString(), ver: externalUser.tokenVersion, email: externalUser.email, role: externalUser.role, institution: externalUser.institution, name: externalUser.name }, secret, { expiresIn: '1h' });
         // Clean up past test notifications, subscriptions, posts, and communities
         await Subscription_js_1.Subscription.deleteMany({ user: { $in: [subscriberUser._id, publisherUser._id, externalUser._id] } });
         await Notification_js_1.Notification.deleteMany({ recipient: { $in: [subscriberUser._id, publisherUser._id, externalUser._id] } });

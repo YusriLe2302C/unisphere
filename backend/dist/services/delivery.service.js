@@ -7,6 +7,7 @@ const Notification_js_1 = require("../models/Notification.js");
 const Community_js_1 = require("../models/Community.js");
 const User_js_1 = require("../models/User.js");
 const platform_config_js_1 = require("../config/platform.config.js");
+const realtime_service_js_1 = require("./realtime.service.js");
 class DeliveryService {
     /**
      * Distributes in-app alerts to subscribed users and community members
@@ -58,7 +59,7 @@ class DeliveryService {
             if (params.type === 'opportunity' || params.type === 'application_status') {
                 userQuery['notificationPreferences.opportunityAlerts'] = { $ne: false };
             }
-            else if (params.type === 'event_registration' || params.type === 'schedule_change') {
+            else if (params.type === 'event_registration' || params.type === 'schedule_change' || params.type === 'calendar_change') {
                 userQuery['notificationPreferences.eventAlerts'] = { $ne: false };
             }
             else if (params.type === 'research_publication') {
@@ -67,6 +68,8 @@ class DeliveryService {
             else if (params.type === 'community_join' || params.type === 'announcement') {
                 userQuery['notificationPreferences.communityAlerts'] = { $ne: false };
             }
+            if (params.type === 'system')
+                userQuery['notificationPreferences.messagingAlerts'] = { $ne: false };
             const validUsers = await User_js_1.User.find(userQuery).select('_id');
             const finalRecipientIds = validUsers.map(u => u._id);
             if (finalRecipientIds.length === 0) {
@@ -89,10 +92,31 @@ class DeliveryService {
                 type: params.type,
                 entityId: params.entityId,
                 message: params.message,
-                isRead: false
+                isRead: false,
+                deliveryStatus: 'pending',
+                attempts: 0,
+                idempotencyKey: `${params.type}:${params.entityId}:${recipientId}`
             }));
             if (toInsert.length > 0) {
-                await Notification_js_1.Notification.insertMany(toInsert);
+                const inserted = await Notification_js_1.Notification.insertMany(toInsert, { ordered: false });
+                for (const notification of inserted) {
+                    try {
+                        (0, realtime_service_js_1.emitNotification)(notification.recipient.toString(), notification);
+                        notification.deliveryStatus = 'delivered';
+                        notification.attempts += 1;
+                        notification.lastAttemptAt = new Date();
+                        notification.failureReason = '';
+                        await notification.save();
+                    }
+                    catch (e) {
+                        notification.attempts += 1;
+                        notification.lastAttemptAt = new Date();
+                        notification.failureReason = String(e?.message || 'Realtime delivery failed').slice(0, 500);
+                        notification.deliveryStatus = notification.attempts >= 5 ? 'failed' : 'pending';
+                        notification.nextAttemptAt = new Date(Date.now() + Math.min(3600000, 1000 * 2 ** notification.attempts));
+                        await notification.save();
+                    }
+                }
             }
             return toInsert.length;
         }

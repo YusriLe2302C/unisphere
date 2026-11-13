@@ -34,7 +34,7 @@ const runTests = async () => {
             department: 'Computer Science',
             isVerified: true
         });
-        const tokenA = jsonwebtoken_1.default.sign({ id: organizerA._id, email: organizerA.email, role: organizerA.role, institution: organizerA.institution }, secret, { expiresIn: '1h' });
+        const tokenA = jsonwebtoken_1.default.sign({ id: organizerA._id, ver: organizerA.tokenVersion, email: organizerA.email, role: organizerA.role, institution: organizerA.institution }, secret, { expiresIn: '1h' });
         // Club Leader B (RVCE)
         const organizerB = await User_js_1.User.create({
             name: `Club Leader B ${timestamp}`,
@@ -45,7 +45,7 @@ const runTests = async () => {
             department: 'Electronics',
             isVerified: true
         });
-        const tokenB = jsonwebtoken_1.default.sign({ id: organizerB._id, email: organizerB.email, role: organizerB.role, institution: organizerB.institution }, secret, { expiresIn: '1h' });
+        const tokenB = jsonwebtoken_1.default.sign({ id: organizerB._id, ver: organizerB.tokenVersion, email: organizerB.email, role: organizerB.role, institution: organizerB.institution }, secret, { expiresIn: '1h' });
         // Research Supervisor (Faculty)
         const facultySupervisor = await User_js_1.User.create({
             name: `Dr. Supervisor ${timestamp}`,
@@ -56,7 +56,7 @@ const runTests = async () => {
             department: 'Computer Science',
             isVerified: true
         });
-        const tokenSupervisor = jsonwebtoken_1.default.sign({ id: facultySupervisor._id, email: facultySupervisor.email, role: facultySupervisor.role, institution: facultySupervisor.institution }, secret, { expiresIn: '1h' });
+        const tokenSupervisor = jsonwebtoken_1.default.sign({ id: facultySupervisor._id, ver: facultySupervisor.tokenVersion, email: facultySupervisor.email, role: facultySupervisor.role, institution: facultySupervisor.institution }, secret, { expiresIn: '1h' });
         // Platform Admin
         const adminUser = await User_js_1.User.create({
             name: `System Admin ${timestamp}`,
@@ -66,7 +66,7 @@ const runTests = async () => {
             institution: 'RNS Institute of Technology',
             isVerified: true
         });
-        const tokenAdmin = jsonwebtoken_1.default.sign({ id: adminUser._id, email: adminUser.email, role: adminUser.role, institution: adminUser.institution }, secret, { expiresIn: '1h' });
+        const tokenAdmin = jsonwebtoken_1.default.sign({ id: adminUser._id, ver: adminUser.tokenVersion, email: adminUser.email, role: adminUser.role, institution: adminUser.institution }, secret, { expiresIn: '1h' });
         // Student Applicant / Attendee
         const attendeeStudent = await User_js_1.User.create({
             name: `Attendee Student ${timestamp}`,
