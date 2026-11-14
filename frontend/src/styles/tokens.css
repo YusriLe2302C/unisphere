@@ -1,0 +1,111 @@
+@theme {
+  --color-burgundy: #6d1d36;
+  --color-burgundy-dark: #481326;
+  --color-burgundy-hover: #852846;
+  --color-burgundy-light: #f5e8ed;
+  --color-ivory: #fff8f0;
+  --color-white: #ffffff;
+  --color-primary-text: #21151a;
+  --color-secondary-text: #75666d;
+  --color-border: #e8dde1;
+  --color-success: #16a34a;
+  --color-warning: #eab308;
+  --color-orange: #f97316;
+  --color-critical: #dc2626;
+  --font-sans: 'DM Sans', sans-serif;
+  --font-display: 'Manrope', sans-serif;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+  --spacing-1: 0.25rem;
+  --spacing-2: 0.5rem;
+  --spacing-3: 0.75rem;
+  --spacing-4: 1rem;
+  --spacing-5: 1.25rem;
+  --spacing-6: 1.5rem;
+  --spacing-8: 2rem;
+  --spacing-10: 2.5rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 0.875rem;
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px rgb(33 21 26 / 5%);
+  --shadow-md: 0 8px 24px rgb(33 21 26 / 10%);
+  --shadow-lg: 0 18px 48px rgb(33 21 26 / 16%);
+  --breakpoint-sm: 36rem;
+  --breakpoint-md: 48rem;
+  --breakpoint-lg: 64rem;
+}
+
+:root {
+  color-scheme: light;
+  --us-color-burgundy: #6d1d36;
+  --us-color-burgundy-dark: #481326;
+  --us-color-burgundy-hover: #852846;
+  --us-color-burgundy-light: #f5e8ed;
+  --us-color-ivory: #fff8f0;
+  --us-color-white: #fff;
+  --us-color-primary-text: #21151a;
+  --us-color-secondary-text: #75666d;
+  --us-color-border: #e8dde1;
+  --us-color-success: #16a34a;
+  --us-color-warning: #eab308;
+  --us-color-orange: #f97316;
+  --us-color-critical: #dc2626;
+  --us-font-size-xs: 0.75rem;
+  --us-font-size-sm: 0.875rem;
+  --us-font-size-md: 1rem;
+  --us-font-size-lg: 1.125rem;
+  --us-font-size-xl: 1.25rem;
+  --us-font-size-2xl: 1.5rem;
+  --us-font-size-3xl: 1.875rem;
+  --us-font-weight-regular: 400;
+  --us-font-weight-medium: 500;
+  --us-font-weight-semibold: 600;
+  --us-font-weight-bold: 700;
+  --us-space-1: 0.25rem;
+  --us-space-2: 0.5rem;
+  --us-space-3: 0.75rem;
+  --us-space-4: 1rem;
+  --us-space-5: 1.25rem;
+  --us-space-6: 1.5rem;
+  --us-space-8: 2rem;
+  --us-space-10: 2.5rem;
+  --us-radius-sm: 0.375rem;
+  --us-radius-md: 0.625rem;
+  --us-radius-lg: 0.875rem;
+  --us-radius-full: 9999px;
+  --us-shadow-sm: 0 1px 2px rgb(33 21 26 / 5%);
+  --us-shadow-md: 0 8px 24px rgb(33 21 26 / 10%);
+  --us-shadow-lg: 0 18px 48px rgb(33 21 26 / 16%);
+  --us-transition: 150ms ease;
+  --us-breakpoint-sm: 36rem;
+  --us-breakpoint-md: 48rem;
+  --us-breakpoint-lg: 64rem;
+  font-family: 'DM Sans', sans-serif;
+  color: var(--us-color-primary-text);
+}
+
+:where(button, a, input, textarea, select, summary, [tabindex]):focus-visible {
+  outline: 3px solid rgb(109 29 54 / 35%);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
