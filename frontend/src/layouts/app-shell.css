@@ -1,0 +1,579 @@
+.unisphere-app {
+  --app-sidebar-width: 258px;
+  position: relative;
+  min-height: 100dvh;
+  overflow-x: clip;
+  color: var(--us-color-primary-text);
+  background: var(--us-color-ivory);
+}
+
+.app-header {
+  position: sticky;
+  z-index: 30;
+  top: 0;
+  height: 76px;
+  border-bottom: 1px solid var(--us-color-border);
+  background: rgb(255 255 255 / 96%);
+  backdrop-filter: blur(14px);
+}
+.app-header-inner {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  grid-template-columns: minmax(270px, 1fr) minmax(210px, 360px) auto;
+  align-items: center;
+  gap: 22px;
+  padding: 0 28px;
+}
+.app-header-brand {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 11px;
+}
+.app-header-brand .us-icon-button {
+  flex: 0 0 auto;
+  border-color: var(--us-color-border);
+  color: var(--us-color-burgundy);
+  background: white;
+}
+.app-mobile-menu-button {
+  display: none !important;
+}
+.app-college-logo {
+  display: block;
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  border: 1px solid var(--us-color-border);
+  border-radius: 9px;
+  background: white;
+  object-fit: contain;
+}
+.app-brand-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+.app-brand-copy strong {
+  overflow: hidden;
+  color: var(--us-color-primary-text);
+  font:
+    700 13px/1.2 'Manrope',
+    sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-brand-copy > span {
+  color: var(--us-color-secondary-text);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.15px;
+}
+.app-header-search-wrap {
+  position: relative;
+  min-width: 0;
+}
+.app-header-search-wrap .us-input {
+  min-height: 38px;
+  border-color: #eee5e9;
+  background: #fdfafb;
+  font-size: 12px;
+}
+.app-search-results {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 7px);
+  right: 0;
+  left: 0;
+  display: grid;
+  gap: 3px;
+  padding: 6px;
+  border: 1px solid var(--us-color-border);
+  border-radius: var(--us-radius-md);
+  background: white;
+  box-shadow: var(--us-shadow-md);
+}
+.app-search-result {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  border-radius: 5px;
+  color: var(--us-color-secondary-text);
+  font-size: 12px;
+}
+.app-search-result > span {
+  flex: 1;
+  color: var(--us-color-primary-text);
+}
+.app-search-result > svg:first-child {
+  color: var(--us-color-burgundy);
+}
+.app-search-result > svg:last-child {
+  opacity: 0.45;
+}
+.app-search-result:hover,
+.app-search-result:focus-visible {
+  background: #fbf4f6;
+}
+.app-search-result.is-active {
+  background: #fbf4f6;
+}
+.app-search-result > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.app-search-result > span strong {
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-search-result > span small {
+  overflow: hidden;
+  color: var(--us-color-secondary-text);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-search-all {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  border-top: 1px solid var(--us-color-border);
+  color: var(--us-color-burgundy);
+  font-size: 11px;
+  font-weight: 700;
+}
+.app-search-empty {
+  margin: 0;
+  padding: 12px 10px;
+  color: var(--us-color-secondary-text);
+  font-size: 12px;
+}
+.app-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.app-header-institution {
+  max-width: 180px;
+  overflow: hidden;
+  padding: 7px 10px;
+  border: 1px solid var(--us-color-border);
+  border-radius: var(--us-radius-sm);
+  color: var(--us-color-secondary-text);
+  background: white;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-notification-link {
+  position: relative;
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--us-radius-sm);
+  color: var(--us-color-secondary-text);
+  transition:
+    color var(--us-transition),
+    background var(--us-transition);
+}
+.app-notification-link:hover,
+.app-notification-link:focus-visible {
+  color: var(--us-color-burgundy);
+  background: var(--us-color-burgundy-light);
+}
+.app-notification-count {
+  position: absolute;
+  top: -4px;
+  right: -7px;
+  min-width: 19px;
+  min-height: 19px !important;
+  justify-content: center;
+  padding: 0 5px !important;
+  border: 2px solid white !important;
+  font-size: 9px !important;
+}
+.app-profile-menu {
+  flex: 0 0 auto;
+}
+.app-profile-menu > summary {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 9px;
+  padding: 4px 7px;
+  border-color: transparent;
+  background: transparent;
+  list-style: none;
+}
+.app-profile-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.app-profile-menu[open] > summary,
+.app-profile-menu > summary:hover {
+  background: #fbf7f8;
+}
+.app-profile-copy {
+  display: grid;
+  min-width: 80px;
+  gap: 3px;
+}
+.app-profile-copy strong {
+  max-width: 140px;
+  overflow: hidden;
+  color: var(--us-color-primary-text);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-profile-copy small {
+  color: var(--us-color-secondary-text);
+  font-size: 9px;
+}
+.app-profile-menu > summary > svg {
+  color: var(--us-color-secondary-text);
+}
+.app-profile-menu .us-dropdown-menu {
+  top: calc(100% + 6px);
+  min-width: 218px;
+}
+.app-profile-menu .us-dropdown-item {
+  gap: 9px;
+}
+.app-profile-menu .us-dropdown-item svg {
+  color: var(--us-color-secondary-text);
+}
+.app-profile-menu-user {
+  display: grid;
+  gap: 4px;
+  padding: 9px 10px 11px;
+}
+.app-profile-menu-user strong {
+  overflow: hidden;
+  color: var(--us-color-primary-text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-profile-menu-user span {
+  overflow: hidden;
+  color: var(--us-color-secondary-text);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-profile-menu-separator {
+  height: 1px;
+  margin: 4px 5px;
+  background: var(--us-color-border);
+}
+
+.app-sidebar {
+  position: fixed;
+  z-index: 15;
+  top: 76px;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  width: var(--app-sidebar-width);
+  flex-direction: column;
+  padding: 19px 13px 13px;
+  border-right: 1px solid var(--us-color-border);
+  background: white;
+  transition: width 180ms ease;
+}
+.sidebar-is-collapsed {
+  --app-sidebar-width: 78px;
+}
+.app-sidebar-brand {
+  display: flex;
+  min-height: 54px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 7px 15px;
+}
+.app-sidebar-brand .brand {
+  gap: 8px;
+}
+.app-sidebar-brand .brand-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+.app-sidebar-caption {
+  color: #9a8b92;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1.25px;
+}
+.app-navigation {
+  flex: 1;
+  overflow-y: auto;
+  padding: 2px 0 12px;
+  scrollbar-width: thin;
+}
+.app-navigation-section {
+  padding: 0 0 12px;
+}
+.app-navigation-section + .app-navigation-section {
+  padding-top: 12px;
+  border-top: 1px solid #f0e9ec;
+}
+.app-navigation-label {
+  margin: 0 9px 7px;
+  color: #9b8d93;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.15px;
+  text-transform: uppercase;
+}
+.app-navigation-items {
+  display: grid;
+  gap: 3px;
+}
+.app-navigation-link {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 12px;
+  padding: 0 11px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: #665960;
+  font-size: 12px;
+  font-weight: 500;
+  transition:
+    color var(--us-transition),
+    background-color var(--us-transition),
+    border-color var(--us-transition);
+}
+.app-navigation-link > svg {
+  flex: 0 0 auto;
+  color: #88777f;
+}
+.app-navigation-link:hover {
+  color: var(--us-color-burgundy);
+  background: #fcf7f9;
+}
+.app-navigation-link:hover > svg {
+  color: var(--us-color-burgundy);
+}
+.app-navigation-link.is-active {
+  border-color: #f0e0e6;
+  color: var(--us-color-burgundy-dark);
+  background: var(--us-color-burgundy-light);
+  font-weight: 700;
+}
+.app-navigation-link.is-active > svg {
+  color: var(--us-color-burgundy);
+}
+.app-sidebar-collapse {
+  display: flex;
+  min-height: 39px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  border: 0;
+  border-top: 1px solid #f0e9ec;
+  color: var(--us-color-secondary-text);
+  background: transparent;
+  font:
+    500 11px 'DM Sans',
+    sans-serif;
+  cursor: pointer;
+}
+.app-sidebar-collapse:hover {
+  color: var(--us-color-burgundy);
+}
+.app-sidebar-collapse svg {
+  flex: 0 0 auto;
+}
+.app-sidebar.is-collapsed {
+  width: 78px;
+  align-items: center;
+  padding-inline: 9px;
+}
+.app-sidebar.is-collapsed .app-sidebar-brand {
+  align-items: center;
+  padding-inline: 0;
+}
+.app-sidebar.is-collapsed .app-sidebar-brand .brand-copy,
+.app-sidebar.is-collapsed .app-sidebar-caption,
+.app-sidebar.is-collapsed .app-navigation-label,
+.app-sidebar.is-collapsed .app-navigation-link > span,
+.app-sidebar.is-collapsed .app-sidebar-collapse > span {
+  display: none;
+}
+.app-sidebar.is-collapsed .app-navigation-link {
+  width: 48px;
+  justify-content: center;
+  padding: 0;
+}
+.app-sidebar.is-collapsed .app-sidebar-collapse {
+  width: 48px;
+  justify-content: center;
+  padding: 0;
+}
+
+.app-main-content {
+  min-height: calc(100dvh - 76px);
+  margin-left: var(--app-sidebar-width);
+  transition: margin-left 180ms ease;
+}
+.app-context-bar {
+  display: flex;
+  min-height: 54px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 34px;
+  border-bottom: 1px solid #f0e9ec;
+  background: rgb(255 255 255 / 72%);
+}
+.app-context-bar .us-breadcrumbs ol {
+  font-size: 11px;
+}
+.app-context-department {
+  overflow: hidden;
+  color: var(--us-color-secondary-text);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-page-content {
+  width: min(100%, 1140px);
+  min-height: calc(100vh - 130px);
+  margin: 0 auto;
+  padding: 30px 34px 50px;
+}
+.app-mobile-navigation {
+  min-height: 100%;
+}
+.app-mobile-navigation .app-navigation-section + .app-navigation-section {
+  margin-top: 4px;
+}
+
+@media (max-width: 1020px) {
+  .unisphere-app:not(.sidebar-is-collapsed) {
+    --app-sidebar-width: 238px;
+  }
+  .app-header-inner {
+    grid-template-columns: minmax(220px, 1fr) minmax(180px, 280px) auto;
+    gap: 14px;
+    padding-inline: 18px;
+  }
+  .app-header-institution {
+    display: none;
+  }
+}
+@media (max-width: 720px) {
+  .unisphere-app {
+    --app-sidebar-width: 0px;
+  }
+  .app-header {
+    height: auto;
+    min-height: 112px;
+  }
+  .app-header-inner {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: 54px 40px;
+    gap: 7px 10px;
+    padding: 7px 13px 9px;
+  }
+  .app-header-brand {
+    grid-column: 1;
+    grid-row: 1;
+    gap: 7px;
+  }
+  .app-mobile-menu-button {
+    display: inline-grid !important;
+    width: 36px !important;
+    height: 36px !important;
+  }
+  .app-desktop-sidebar-button {
+    display: none !important;
+  }
+  .app-college-logo {
+    width: 36px;
+    height: 36px;
+    border-radius: 7px;
+  }
+  .app-brand-copy strong {
+    max-width: 185px;
+    font-size: 11px;
+  }
+  .app-brand-copy > span {
+    font-size: 9px;
+  }
+  .app-header-search-wrap {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .app-header-search-wrap .us-input {
+    min-height: 38px;
+  }
+  .app-header-actions {
+    grid-column: 2;
+    grid-row: 1;
+    gap: 7px;
+  }
+  .app-profile-menu > summary {
+    min-height: 38px;
+    gap: 3px;
+    padding: 2px;
+  }
+  .app-profile-copy,
+  .app-profile-menu > summary > svg {
+    display: none;
+  }
+  .app-notification-link {
+    width: 36px;
+    height: 36px;
+  }
+  .app-sidebar {
+    display: none;
+  }
+  .app-main-content {
+    min-height: calc(100dvh - 112px);
+    margin-left: 0;
+  }
+  .app-context-bar {
+    min-height: 45px;
+    padding-inline: 16px;
+  }
+  .app-context-bar .us-breadcrumbs ol {
+    font-size: 10px;
+  }
+  .app-page-content {
+    min-height: calc(100dvh - 157px);
+    padding: 22px 16px 36px;
+  }
+}
+@media (max-width: 380px) {
+  .app-header-inner {
+    padding-inline: 9px;
+  }
+  .app-brand-copy strong {
+    max-width: 152px;
+    font-size: 10px;
+  }
+  .app-college-logo {
+    width: 33px;
+    height: 33px;
+  }
+  .app-profile-menu .us-dropdown-menu {
+    right: -3px;
+  }
+}
