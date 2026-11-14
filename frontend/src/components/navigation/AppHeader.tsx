@@ -198,6 +198,7 @@ export function AppHeader({
         </div>
 
         <div className="app-header-actions">
+          {/* <img className="app-header-avatar" src="https://www.rnsit.ac.in/wp-content/themes/rnsit/img/sticky-header-logo-with-25years.png" alt="" /> */}
           {user?.institution && <span className="app-header-institution">{user.institution}</span>}
           <Link
             className="app-notification-link"

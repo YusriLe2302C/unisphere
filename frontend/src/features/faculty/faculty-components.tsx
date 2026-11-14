@@ -6,15 +6,17 @@ export function FacultyHeading({
   title,
   description,
   action,
+  workspaceLabel = 'FACULTY WORKSPACE',
 }: {
   title: string;
   description: string;
   action?: ReactNode;
+  workspaceLabel?: string;
 }) {
   return (
     <header className="faculty-heading">
       <div>
-        <span className="eyebrow">RNS INSTITUTE OF TECHNOLOGY · FACULTY WORKSPACE</span>
+        <span className="eyebrow">RNS INSTITUTE OF TECHNOLOGY · {workspaceLabel}</span>
         <h1>{title}</h1>
         <p>{description}</p>
       </div>

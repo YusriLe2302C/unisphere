@@ -61,6 +61,9 @@ function draftFrom(record: FacultyAnnouncement): AnnouncementDraft {
 
 export function FacultyAnnouncementsPage() {
   const { session, user } = useAuth();
+  const canPublish = ['admin', 'superadmin', 'principal', 'dean', 'faculty'].includes(
+    user?.role || '',
+  );
   const [records, setRecords] = useState<FacultyAnnouncement[]>([]);
   const [draft, setDraft] = useState(blank);
   const [targetInstitution, setTargetInstitution] = useState('');
@@ -104,7 +107,7 @@ export function FacultyAnnouncementsPage() {
   }
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!session?.token) return;
+    if (!session?.token || !canPublish) return;
     setBusy(true);
     setError('');
     setNotice('');
@@ -145,10 +148,17 @@ export function FacultyAnnouncementsPage() {
     <div className="faculty-page">
       <FacultyHeading
         title="Announcements"
-        description="Create institution announcements with the backend’s audience and academic targeting fields."
+        workspaceLabel={`${user?.role?.toUpperCase() || 'CAMPUS'} WORKSPACE`}
+        description={
+          canPublish
+            ? 'Create institution announcements with audience and academic targeting.'
+            : 'Announcements shared with your account will appear here.'
+        }
       />
-      <div className="faculty-announcement-layout">
-        <Card className="faculty-form-card">
+      <div
+        className={`faculty-announcement-layout ${canPublish ? '' : 'faculty-announcement-layout--reader'}`}
+      >
+        <Card className={`faculty-form-card ${canPublish ? '' : 'faculty-form-card--hidden'}`}>
           <header className="faculty-panel-head">
             <div>
               <span className="eyebrow">
@@ -183,9 +193,11 @@ export function FacultyAnnouncementsPage() {
                 <Input
                   value={targetInstitution}
                   onChange={(event) => setTargetInstitution(event.target.value)}
-                  placeholder="Defaults to your institution"
+                  placeholder="Leave blank to send across all institutions"
                 />
-                <small>Only the admin announcement endpoint accepts institution targeting.</small>
+                <small>
+                  Leave blank for a platform-wide announcement, or enter one institution.
+                </small>
               </label>
             )}
             <label>
@@ -416,7 +428,7 @@ export function FacultyAnnouncementsPage() {
           ) : (
             <FacultyEmpty
               title="No announcements available"
-              description="Announcements visible to this faculty account will appear here."
+              description="Announcements visible to your account will appear here."
             />
           )}
         </section>

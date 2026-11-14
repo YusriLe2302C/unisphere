@@ -40,8 +40,9 @@ function buildVisibilityFilter(user) {
     if (user.role === 'admin' || user.role === 'superadmin') {
         return filter; // See all
     }
-    // Institution scope
-    filter.institution = user.institution;
+    // Platform-wide admin announcements use "*"; institution-targeted notices
+    // remain scoped to the viewer's institution.
+    filter.$or = [{ institution: user.institution }, { institution: '*' }];
     // Audience filter: must match 'all' or user's role-mapped audience
     const audienceMap = {
         student: 'students',
@@ -51,9 +52,15 @@ function buildVisibilityFilter(user) {
         principal: 'faculty'
     };
     const userAudience = audienceMap[user.role] || 'all';
-    filter.$or = [
-        { targetAudience: 'all' },
-        { targetAudience: userAudience }
+    // Keep the audience clause separate from targeting clauses. Authors must be
+    // able to retrieve their own posts even when they targeted a different audience.
+    filter.$and = [
+        { $or: [{ author: user._id }, { targetAudience: 'all' }, { targetAudience: userAudience }] },
+        { $or: [{ author: user._id }, { targetRoles: { $size: 0 } }, { targetRoles: user.role }] },
+        { $or: [{ author: user._id }, { targetDepartments: { $size: 0 } }, { targetDepartments: user.department }] },
+        { $or: [{ author: user._id }, { targetAcademicYears: { $size: 0 } }, { targetAcademicYears: user.batch }] },
+        { $or: [{ author: user._id }, { targetSemesters: { $size: 0 } }, { targetSemesters: user.semester }] },
+        { $or: [{ author: user._id }, { targetSections: { $size: 0 } }, { targetSections: user.section }] }
     ];
     return filter;
 }
@@ -61,7 +68,11 @@ function buildVisibilityFilter(user) {
 function userMatchesTargeting(user, ann) {
     if (user.role === 'admin' || user.role === 'superadmin')
         return true;
-    if (ann.institution !== user.institution)
+    // Authors can always see the posts they created, including posts aimed at
+    // another role, department, batch, semester, or section.
+    if (ann.author?._id?.toString() === user._id.toString() || ann.author?.toString() === user._id.toString())
+        return true;
+    if (ann.institution !== '*' && ann.institution !== user.institution)
         return false;
     const audienceMap = {
         student: 'students', faculty: 'faculty', alumni: 'alumni',
@@ -103,10 +114,8 @@ router.get('/', auth_js_1.authenticate, async (req, res) => {
                 .limit(Number(limit)),
             Announcement_js_1.Announcement.countDocuments(filter)
         ]);
-        // Further filter by granular targeting (roles, departments, semesters, sections)
-        const targeted = announcements.filter(ann => userMatchesTargeting(user, ann));
         res.json({
-            announcements: targeted,
+            announcements,
             total,
             page: Number(page),
             pages: Math.ceil(total / Number(limit))
@@ -144,7 +153,8 @@ router.post('/', auth_js_1.authenticate, async (req, res) => {
             res.status(400).json({ message: 'Title and content are required.' });
             return;
         }
-        const targetInst = institution || user.institution;
+        const isPlatformAdmin = user.role === 'admin' || user.role === 'superadmin';
+        const targetInst = institution || (isPlatformAdmin ? '*' : user.institution);
         const perm = canPublishAnnouncement(user, targetInst);
         if (!perm.allowed) {
             res.status(403).json({ message: perm.reason });
@@ -166,7 +176,9 @@ router.post('/', auth_js_1.authenticate, async (req, res) => {
             expiresAt: expiresAt || undefined
         });
         // Build recipient query matching targeting criteria
-        const recipientQuery = { institution: targetInst, isActive: true };
+        const recipientQuery = targetInst === '*'
+            ? { isActive: true }
+            : { institution: targetInst, isActive: true };
         if (targetAudience && targetAudience !== 'all') {
             const roleMap = {
                 students: ['student'],

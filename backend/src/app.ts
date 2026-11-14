@@ -26,7 +26,7 @@ import { envConfig } from './config/env.js';
 
 export const createApp = (): Express => {
   const app = express();
-
+const origin = envConfig.CORS_ORIGIN;
   // Operational Safety & Security Middleware
   app.use(cors({
     origin: (origin, callback) => {

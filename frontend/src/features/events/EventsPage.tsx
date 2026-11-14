@@ -12,7 +12,7 @@ import './events.css';
 const pageSize = 9;
 
 export function EventsPage() {
-  const { session } = useAuth();
+  const { session, user } = useAuth();
   const [events, setEvents] = useState<CampusEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -31,7 +31,11 @@ export function EventsPage() {
         from: new Date().toISOString(),
         limit: 100,
       });
-      setEvents(upcoming.filter((event) => ['published', 'ongoing'].includes(event.status)));
+      const visibleStatuses =
+        user?.role === 'faculty'
+          ? ['draft', 'pending_review', 'approved', 'rejected', 'published', 'ongoing', 'completed', 'cancelled']
+          : ['published', 'ongoing', 'completed'];
+      setEvents(upcoming.filter((event) => visibleStatuses.includes(event.status)));
     } catch (reason) {
       setError(
         reason instanceof ApiError
@@ -41,7 +45,7 @@ export function EventsPage() {
     } finally {
       setLoading(false);
     }
-  }, [session?.token]);
+  }, [session?.token, user?.role]);
 
   useEffect(() => {
     void loadEvents();
@@ -163,7 +167,9 @@ export function EventsPage() {
           description={
             events.length
               ? 'Try changing the search or filters.'
-              : 'No upcoming published events are available right now.'
+              : user?.role === 'faculty'
+                ? 'No upcoming events are available in your institution right now.'
+                : 'No upcoming published events are available right now.'
           }
           action={
             search || category !== 'all' || registration !== 'all' ? (

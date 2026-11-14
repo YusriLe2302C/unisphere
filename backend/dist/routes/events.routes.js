@@ -46,14 +46,41 @@ const eventFields = ['title', 'description', 'mode', 'venue', 'onlineMeetingUrl'
 router.get('/', auth_js_1.authenticate, async (req, res) => {
     try {
         const u = req.user;
-        const q = { status: { $in: ['published', 'ongoing', 'completed'] }, institution: u.institution };
+        const isPrivileged = isAuthority(u) || u.role === 'faculty';
+        // Faculty can see every event in their institution, including events awaiting review.
+        // Students and alumni only see events that have been published.
+        const defaultStatuses = isAdmin(u) || ['dean', 'principal'].includes(u.role)
+            ? ['draft', 'pending_review', 'approved', 'rejected', 'published', 'ongoing', 'completed', 'cancelled']
+            : u.role === 'faculty'
+                ? ['draft', 'pending_review', 'approved', 'rejected', 'published', 'ongoing', 'completed', 'cancelled']
+                : ['published', 'ongoing', 'completed'];
+        const q = { institution: u.institution, status: { $in: defaultStatuses } };
         if (req.query.institution && isAdmin(u))
             q.institution = String(req.query.institution);
-        if (req.query.status && (isAuthority(u) || isAdmin(u)))
+        // Allow explicit status filter for privileged roles
+        if (req.query.status && isPrivileged)
             q.status = String(req.query.status);
-        if (req.query.from || req.query.to)
-            q.startDate = { ...(req.query.from ? { $gte: parseDate(req.query.from, 'from') } : {}), ...(req.query.to ? { $lte: parseDate(req.query.to, 'to') } : {}) };
+        // Status filters are primarily for institution managers. Faculty can use them to
+        // find any event in their institution, not just the events they organized.
+        if (req.query.from)
+            q.endDate = { $gte: parseDate(req.query.from, 'from') };
+        if (req.query.to)
+            q.startDate = { $lte: parseDate(req.query.to, 'to') };
         const events = await Event_js_1.Event.find(q).sort({ startDate: 1 }).limit(Math.min(Number(req.query.limit) || 50, 100));
+        // For students: attach eligibility flag to each event
+        if (u.role === 'student') {
+            const enriched = events.map(e => {
+                const el = e.eligibility;
+                const eligible = (!el.targetRoles?.length || el.targetRoles.includes('student')) &&
+                    (!el.targetDepartments?.length || el.targetDepartments.includes(u.department)) &&
+                    (!el.targetBatches?.length || el.targetBatches.includes(u.batch || '')) &&
+                    (!el.targetSemesters?.length || el.targetSemesters.includes(u.semester || 0)) &&
+                    (!el.minCgpa || (u.cgpa || 0) >= el.minCgpa);
+                return { ...e.toObject(), isEligible: eligible };
+            });
+            res.json({ events: enriched });
+            return;
+        }
         res.json({ events });
     }
     catch (e) {
@@ -86,18 +113,66 @@ router.post('/', auth_js_1.authenticate, async (req, res) => {
 });
 router.get('/:id', auth_js_1.authenticate, async (req, res) => {
     try {
+        const u = req.user;
         const e = await Event_js_1.Event.findById(req.params.id);
         if (!e)
             throw new errors_js_1.NotFoundError('Event not found');
-        if (!sameInst(req.user, e) && e.status !== 'published' && e.status !== 'ongoing' && e.status !== 'completed')
+        // Non-admin students/alumni can only see published/ongoing/completed events
+        const canSeeAll = isAuthority(u) || u.role === 'faculty' || canManage(u, e);
+        if (!canSeeAll && !['published', 'ongoing', 'completed'].includes(e.status))
             throw new errors_js_1.ForbiddenError('Event is not available');
-        const registration = await EventRegistration_js_1.EventRegistration.find({ eventId: e._id, userId: req.user._id, status: { $in: activeStatuses } });
-        res.json({ event: e, myRegistration: registration[0] || null });
+        if (!sameInst(u, e) && !canSeeAll)
+            throw new errors_js_1.ForbiddenError('Event is not available');
+        // Build role-aware response
+        const eventObj = e.toObject();
+        if (u.role === 'student') {
+            // Eligibility check
+            const el = e.eligibility;
+            const eligible = (!el.targetRoles?.length || el.targetRoles.includes('student')) &&
+                (!el.targetDepartments?.length || el.targetDepartments.includes(u.department)) &&
+                (!el.targetBatches?.length || el.targetBatches.includes(u.batch || '')) &&
+                (!el.targetSemesters?.length || el.targetSemesters.includes(u.semester || 0)) &&
+                (!el.minCgpa || (u.cgpa || 0) >= el.minCgpa);
+            const registration = await EventRegistration_js_1.EventRegistration.findOne({ eventId: e._id, userId: u._id, status: { $in: activeStatuses } });
+            res.json({ event: { ...eventObj, isEligible: eligible, ineligibilityReasons: buildIneligibilityReasons(u, e) }, myRegistration: registration || null, canRegister: eligible && ['published', 'ongoing'].includes(e.status) });
+            return;
+        }
+        if (u.role === 'faculty') {
+            // Faculty see full event details + registration summary count, no personal registration
+            const [registeredCount, waitlistedCount] = await Promise.all([
+                EventRegistration_js_1.EventRegistration.countDocuments({ eventId: e._id, status: 'registered' }),
+                EventRegistration_js_1.EventRegistration.countDocuments({ eventId: e._id, status: 'waitlisted' })
+            ]);
+            res.json({ event: eventObj, registrationSummary: { registered: registeredCount, waitlisted: waitlistedCount, capacity: e.capacity, allocatedSeats: e.allocatedSeats }, canRegister: false });
+            return;
+        }
+        // Admin / dean / principal: full details
+        const [registeredCount, waitlistedCount, attendedCount] = await Promise.all([
+            EventRegistration_js_1.EventRegistration.countDocuments({ eventId: e._id, status: 'registered' }),
+            EventRegistration_js_1.EventRegistration.countDocuments({ eventId: e._id, status: 'waitlisted' }),
+            EventRegistration_js_1.EventRegistration.countDocuments({ eventId: e._id, status: 'attended' })
+        ]);
+        res.json({ event: eventObj, registrationSummary: { registered: registeredCount, waitlisted: waitlistedCount, attended: attendedCount, capacity: e.capacity, allocatedSeats: e.allocatedSeats }, canRegister: false });
     }
     catch (e) {
         sendError(res, e);
     }
 });
+function buildIneligibilityReasons(u, e) {
+    const reasons = [];
+    const el = e.eligibility;
+    if (el.targetRoles?.length && !el.targetRoles.includes('student'))
+        reasons.push('This event is not open to students');
+    if (el.targetDepartments?.length && !el.targetDepartments.includes(u.department))
+        reasons.push(`Your department (${u.department}) is not eligible`);
+    if (el.targetBatches?.length && !el.targetBatches.includes(u.batch || ''))
+        reasons.push(`Your batch (${u.batch}) is not eligible`);
+    if (el.targetSemesters?.length && !el.targetSemesters.includes(u.semester || 0))
+        reasons.push(`Your semester (${u.semester}) is not eligible`);
+    if (el.minCgpa && (u.cgpa || 0) < el.minCgpa)
+        reasons.push(`Minimum CGPA of ${el.minCgpa} required (yours: ${u.cgpa})`);
+    return reasons;
+}
 router.put('/:id', auth_js_1.authenticate, async (req, res) => {
     try {
         const e = await Event_js_1.Event.findById(req.params.id);
@@ -237,8 +312,23 @@ router.post('/:id/register', auth_js_1.authenticate, async (req, res) => {
                 throw new errors_js_1.NotFoundError('Event not found');
             if (e.institution !== u.institution)
                 throw new errors_js_1.ForbiddenError('Cross-institution registration is not permitted');
+            // Only students can register for events
+            if (u.role !== 'student')
+                throw new errors_js_1.ForbiddenError('Only students can register for events');
             if (!['published', 'ongoing'].includes(e.status))
                 throw new errors_js_1.ConflictError('Registration is not open for this event');
+            // Eligibility enforcement
+            const el = e.eligibility;
+            if (el.targetRoles?.length && !el.targetRoles.includes('student'))
+                throw new errors_js_1.ForbiddenError('This event is not open to students');
+            if (el.targetDepartments?.length && !el.targetDepartments.includes(u.department))
+                throw new errors_js_1.ForbiddenError(`Your department (${u.department}) is not eligible for this event`);
+            if (el.targetBatches?.length && !el.targetBatches.includes(u.batch || ''))
+                throw new errors_js_1.ForbiddenError(`Your batch is not eligible for this event`);
+            if (el.targetSemesters?.length && !el.targetSemesters.includes(u.semester || 0))
+                throw new errors_js_1.ForbiddenError(`Your semester is not eligible for this event`);
+            if (el.minCgpa && (u.cgpa || 0) < el.minCgpa)
+                throw new errors_js_1.ForbiddenError(`Minimum CGPA of ${el.minCgpa} required to register`);
             const now = new Date();
             if (e.registrationOpenDate && now < e.registrationOpenDate || e.registrationCloseDate && now > e.registrationCloseDate)
                 throw new errors_js_1.ConflictError('Registration period is closed');

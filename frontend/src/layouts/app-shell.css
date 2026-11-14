@@ -59,7 +59,7 @@
   overflow: hidden;
   color: var(--us-color-primary-text);
   font:
-    700 13px/1.2 'Manrope',
+    700 30px/1.2 'Manrope',
     sans-serif;
   text-overflow: ellipsis;
   white-space: nowrap;

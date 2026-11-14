@@ -330,6 +330,12 @@
   align-items: start;
   gap: 1rem;
 }
+.faculty-announcement-layout--reader {
+  grid-template-columns: minmax(0, 1fr);
+}
+.faculty-form-card--hidden {
+  display: none;
+}
 .faculty-form-card {
   padding: 1.2rem !important;
   border: 1px solid var(--faculty-border) !important;

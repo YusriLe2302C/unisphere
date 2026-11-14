@@ -13,7 +13,9 @@ const db_js_1 = require("../config/db.js");
 const User_js_1 = require("../models/User.js");
 const Post_js_1 = require("../models/Post.js");
 const Community_js_1 = require("../models/Community.js");
+const Announcement_js_1 = require("../models/Announcement.js");
 const Notification_js_1 = require("../models/Notification.js");
+const Event_js_1 = require("../models/Event.js");
 const mongoose_1 = __importDefault(require("mongoose"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const auth_js_1 = require("../middleware/auth.js");
@@ -51,13 +53,16 @@ const runTests = async () => {
     try {
         // ── SETUP USERS ──────────────────────────────────────────────────────────
         console.log('── Setup: Creating test users ──');
-        const [student, student2, faculty, dean, admin, outsider] = await Promise.all([
+        const [student, student2, faculty, dean, admin, outsider, principal, alumni, superadmin] = await Promise.all([
             User_js_1.User.findOneAndUpdate({ email: 'hub_student@alpha.edu' }, { name: 'Hub Student', role: 'student', institution: 'Alpha University', department: 'CS', semester: 3, section: 'A', batch: '2022', isVerified: true, password: 'x', institutionDomain: 'alpha.edu' }, { upsert: true, new: true }),
             User_js_1.User.findOneAndUpdate({ email: 'hub_student2@alpha.edu' }, { name: 'Hub Student2', role: 'student', institution: 'Alpha University', department: 'CS', semester: 5, section: 'B', batch: '2021', isVerified: true, password: 'x', institutionDomain: 'alpha.edu' }, { upsert: true, new: true }),
             User_js_1.User.findOneAndUpdate({ email: 'hub_faculty@alpha.edu' }, { name: 'Hub Faculty', role: 'faculty', institution: 'Alpha University', department: 'CS', isVerified: true, password: 'x', institutionDomain: 'alpha.edu' }, { upsert: true, new: true }),
             User_js_1.User.findOneAndUpdate({ email: 'hub_dean@alpha.edu' }, { name: 'Hub Dean', role: 'dean', institution: 'Alpha University', department: 'Admin', isVerified: true, password: 'x', institutionDomain: 'alpha.edu' }, { upsert: true, new: true }),
             User_js_1.User.findOneAndUpdate({ email: 'hub_admin@platform.io' }, { name: 'Hub Admin', role: 'admin', institution: 'Platform', isVerified: true, password: 'x', institutionDomain: 'platform.io' }, { upsert: true, new: true }),
-            User_js_1.User.findOneAndUpdate({ email: 'hub_outsider@beta.edu' }, { name: 'Outsider', role: 'student', institution: 'Beta University', department: 'EE', isVerified: true, password: 'x', institutionDomain: 'beta.edu' }, { upsert: true, new: true })
+            User_js_1.User.findOneAndUpdate({ email: 'hub_outsider@beta.edu' }, { name: 'Outsider', role: 'student', institution: 'Beta University', department: 'EE', isVerified: true, password: 'x', institutionDomain: 'beta.edu' }, { upsert: true, new: true }),
+            User_js_1.User.findOneAndUpdate({ email: 'hub_principal@alpha.edu' }, { name: 'Hub Principal', role: 'principal', institution: 'Alpha University', department: 'Admin', isVerified: true, password: 'x', institutionDomain: 'alpha.edu' }, { upsert: true, new: true }),
+            User_js_1.User.findOneAndUpdate({ email: 'hub_alumni@alpha.edu' }, { name: 'Hub Alumni', role: 'alumni', institution: 'Alpha University', department: 'CS', isVerified: true, password: 'x', institutionDomain: 'alpha.edu' }, { upsert: true, new: true }),
+            User_js_1.User.findOneAndUpdate({ email: 'hub_superadmin@platform.io' }, { name: 'Hub Superadmin', role: 'superadmin', institution: 'Alpha University', department: 'Admin', isVerified: true, password: 'x', institutionDomain: 'platform.io' }, { upsert: true, new: true })
         ]);
         const mkToken = (u) => jsonwebtoken_1.default.sign({ id: u._id, ver: u.tokenVersion ?? 0 }, secret, { expiresIn: '1h' });
         const sTok = mkToken(student);
@@ -66,6 +71,9 @@ const runTests = async () => {
         const dTok = mkToken(dean);
         const aTok = mkToken(admin);
         const oTok = mkToken(outsider);
+        const pTok = mkToken(principal);
+        const alumniTok = mkToken(alumni);
+        const saTok = mkToken(superadmin);
         console.log('  Users ready.\n');
         // ── A. POSTS ─────────────────────────────────────────────────────────────
         console.log('── A. Posts CRUD ──');
@@ -185,11 +193,56 @@ const runTests = async () => {
             institution: 'Beta University', targetAudience: 'all'
         });
         assert(an5 === 201, 'Admin publishes cross-institution announcement');
+        // An admin announcement without an institution is platform-wide.
+        const { status: an11, data: and11 } = await req(`${base}/announcements`, 'POST', aTok, {
+            title: 'Global Platform Update', content: 'Visible across institutions.',
+            targetAudience: 'all'
+        });
+        assert(an11 === 201, 'Admin publishes a platform-wide announcement');
         // Targeting: student in CS sem 3 sees the CS announcement
         const { status: an6, data: and6 } = await req(`${base}/announcements`, 'GET', sTok);
         assert(an6 === 200 && Array.isArray(and6.announcements), 'Student retrieves announcements');
         const seesCSNotice = and6.announcements.some((a) => a._id === annId);
         assert(seesCSNotice, 'CS sem-3 student sees targeted CS announcement');
+        assert(and6.announcements.some((a) => a._id === and11.announcement._id), 'Student sees a platform-wide admin announcement');
+        assert(!and6.announcements.some((a) => a._id === and5.announcement._id), 'Student does not see an admin announcement targeted at another institution');
+        const roleTokens = [
+            ['student', sTok],
+            ['alumni', alumniTok],
+            ['faculty', fTok],
+            ['dean', dTok],
+            ['principal', pTok],
+            ['admin', aTok],
+            ['superadmin', saTok]
+        ];
+        for (const [role, token] of roleTokens) {
+            const { status: roleAnnouncementStatus, data: roleAnnouncements } = await req(`${base}/announcements`, 'GET', token);
+            assert(roleAnnouncementStatus === 200 &&
+                roleAnnouncements.announcements.some((a) => a._id === and11.announcement._id), `${role} can read platform-wide announcements`);
+            const { status: roleEventStatus } = await req(`${base}/events`, 'GET', token);
+            assert(roleEventStatus === 200, `${role} can retrieve events`);
+        }
+        const { status: facultyAnnouncementStatus, data: facultyAnnouncements } = await req(`${base}/announcements`, 'GET', fTok);
+        assert(facultyAnnouncementStatus === 200 &&
+            facultyAnnouncements.announcements.some((a) => a._id === annId), 'Faculty sees own announcement targeted at students');
+        const { status: globalDetailStatus } = await req(`${base}/announcements/${and11.announcement._id}`, 'GET', oTok);
+        assert(globalDetailStatus === 200, 'Platform-wide admin announcement details are visible across institutions');
+        await Announcement_js_1.Announcement.findByIdAndDelete(and11.announcement._id);
+        // Date-range GETs include events that started before the range but are still ongoing.
+        const now = Date.now();
+        const ongoingEvent = await Event_js_1.Event.create({
+            title: 'Ongoing Hub Event',
+            description: 'An event spanning the current time.',
+            institution: 'Alpha University',
+            organizer: faculty._id,
+            status: 'ongoing',
+            startDate: new Date(now - 60 * 60 * 1000),
+            endDate: new Date(now + 60 * 60 * 1000)
+        });
+        const eventFrom = new Date().toISOString();
+        const { status: eventListStatus, data: eventList } = await req(`${base}/events?from=${encodeURIComponent(eventFrom)}`, 'GET', sTok);
+        assert(eventListStatus === 200 && eventList.events.some((event) => event._id === ongoingEvent._id.toString()), 'Event GET includes events that overlap the requested date range');
+        await Event_js_1.Event.findByIdAndDelete(ongoingEvent._id);
         // Outsider cannot see Alpha announcement
         const { status: an7 } = await req(`${base}/announcements/${annId}`, 'GET', oTok);
         assert(an7 === 403, 'Outsider blocked from Alpha announcement');
