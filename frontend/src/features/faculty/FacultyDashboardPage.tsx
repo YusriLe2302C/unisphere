@@ -137,12 +137,14 @@ export function FacultyDashboardPage() {
       papers.filter(
         (p) =>
           p.isStudentSubmission &&
-          ((p.lifecycleStatus === 'pending_proctor' && p.assignedProctorId === user?._id) ||
+          ((p.lifecycleStatus === 'pending_proctor' &&
+            (p.assignedProctorId === user?._id ||
+              user?.responsibilities?.includes('proctor'))) ||
             (p.lifecycleStatus === 'pending_guide' &&
               (p.assignedProjectGuideIds?.includes(user?._id || '') ||
                 p.assignedProjectGuideId === user?._id))),
       ),
-    [papers, user?._id],
+    [papers, user?._id, user?.responsibilities],
   );
   const authored = papers.filter((p) => userId(p.submittedBy) === user?._id);
   const activeAssignments = assignments.filter((a) => a.status === 'active');
@@ -222,7 +224,7 @@ export function FacultyDashboardPage() {
           <ClipboardCheck size={17} />
           <span>
             <strong>Review student work</strong>
-            <small>Open assigned Proctor or Guide reviews</small>
+            <small>Open institutional Proctor or assigned Guide reviews</small>
           </span>
           <ArrowRight size={15} />
         </Link>

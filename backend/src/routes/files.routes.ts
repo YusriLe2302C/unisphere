@@ -11,6 +11,7 @@ import { Post } from '../models/Post.js';
 import { CareerQuestion } from '../models/CareerQuestion.js';
 import { Message } from '../models/Message.js';
 import { Application } from '../models/Application.js';
+import { isInstitutionProctor } from '../utils/research-review-access.js';
 
 const router = Router();
 const types: FileAssociatedEntityType[] = ['post','research_paper','opportunity','application','avatar','chat_message','academic_notice','event','community_resource','profile_image','placement_document','research_dataset','project_document','career_question'];
@@ -64,7 +65,7 @@ async function canRead(file: any, u: any): Promise<boolean> {
   if (file.uploaderId.toString() === u._id.toString() || file.allowedUserIds.some((x: any) => x.toString() === u._id.toString())) return true;
   if (!file.associatedEntityId) return false;
   if (file.associatedEntityType === 'event') { const e = await Event.findById(file.associatedEntityId); return Boolean(e && e.institution === u.institution && (e.status === 'published' || e.status === 'ongoing' || e.organizer.toString() === u._id.toString())); }
-  if (['research_paper','research_dataset','project_document'].includes(file.associatedEntityType)) { const p = await ResearchPaper.findById(file.associatedEntityId); return Boolean(p && p.institution === u.institution && (p.lifecycleStatus === 'published' || p.submittedBy.toString() === u._id.toString() || p.assignedProctorId?.toString() === u._id.toString() || (p.assignedProjectGuideIds || []).some(x => x.toString() === u._id.toString()))); }
+  if (['research_paper','research_dataset','project_document'].includes(file.associatedEntityType)) { const p = await ResearchPaper.findById(file.associatedEntityId); return Boolean(p && p.institution === u.institution && (p.lifecycleStatus === 'published' || p.submittedBy.toString() === u._id.toString() || p.assignedProctorId?.toString() === u._id.toString() || (p.assignedProjectGuideIds || []).some(x => x.toString() === u._id.toString()) || p.isStudentSubmission && p.lifecycleStatus === 'pending_proctor' && isInstitutionProctor(u, p))); }
   if (file.associatedEntityType === 'career_question') { const q = await CareerQuestion.findById(file.associatedEntityId); return Boolean(q && q.institution === u.institution && (q.visibility === 'public' || q.author.toString() === u._id.toString() || q.assignedMentor?.toString() === u._id.toString() || q.answers.some((a: any) => a.responder.toString() === u._id.toString()) || q.followUps.some((f: any) => f.author.toString() === u._id.toString()))); }
   if (file.associatedEntityType === 'application') {
     const application = await Application.findById(file.associatedEntityId).populate('opportunity', 'postedBy institution isPlacementDrive');

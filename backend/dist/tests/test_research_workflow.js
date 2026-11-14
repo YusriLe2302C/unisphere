@@ -13,13 +13,14 @@ const MentorshipBinding_js_1 = require("../models/MentorshipBinding.js");
 const ResearchPaper_js_1 = require("../models/ResearchPaper.js");
 const ResearchReview_js_1 = require("../models/ResearchReview.js");
 const ResearchCollaboration_js_1 = require("../models/ResearchCollaboration.js");
+const Notification_js_1 = require("../models/Notification.js");
 const uri = process.env.RESEARCH_WORKFLOW_TEST_DB_URI;
 if (!uri)
     throw new Error('Set RESEARCH_WORKFLOW_TEST_DB_URI to a disposable MongoDB database before running this test.');
 async function run() {
     process.env.MONGODB_URI = uri;
     await (0, db_js_1.connectDB)(uri);
-    await Promise.all([User_js_1.User.init(), MentorshipBinding_js_1.MentorshipBinding.init(), ResearchPaper_js_1.ResearchPaper.init(), ResearchReview_js_1.ResearchReview.init(), ResearchCollaboration_js_1.ResearchCollaboration.init()]);
+    await Promise.all([User_js_1.User.init(), MentorshipBinding_js_1.MentorshipBinding.init(), ResearchPaper_js_1.ResearchPaper.init(), ResearchReview_js_1.ResearchReview.init(), ResearchCollaboration_js_1.ResearchCollaboration.init(), Notification_js_1.Notification.init()]);
     const app = (0, app_js_1.createApp)();
     const server = app.listen(5011);
     const secret = (0, auth_js_1.getJwtSecret)();
@@ -27,10 +28,11 @@ async function run() {
     try {
         for (const [key, role, responsibilities = []] of [
             ['student', 'student', []], ['proctor', 'faculty', []], ['guide1', 'faculty', []], ['guide2', 'faculty', []],
-            ['other', 'faculty', []], ['facultyAuthor', 'faculty', []], ['authority', 'dean', []], ['pi', 'faculty', []]
+            ['other', 'faculty', []], ['otherProctor', 'faculty', ['proctor']], ['facultyAuthor', 'faculty', []], ['authority', 'dean', []], ['pi', 'faculty', []]
         ]) {
             people[key] = await User_js_1.User.create({ name: key, email: `${key}@research-test.invalid`, password: 'unused-password-hash', role, institution: 'Research Test College', department: 'Science', responsibilities, isVerified: true });
         }
+        people.foreignProctor = await User_js_1.User.create({ name: 'foreignProctor', email: 'foreignProctor@research-test.invalid', password: 'unused-password-hash', role: 'faculty', institution: 'Other Research College', department: 'Science', responsibilities: ['proctor'], isVerified: true });
         const token = (person) => jsonwebtoken_1.default.sign({ id: person._id.toString(), ver: person.tokenVersion, email: person.email, role: person.role, institution: person.institution, name: person.name }, secret, { expiresIn: '1h' });
         const req = async (path, who, method = 'GET', data) => {
             const response = await fetch(`http://localhost:5011/api/research${path}`, { method, headers: { Authorization: `Bearer ${token(who)}`, 'Content-Type': 'application/json' }, ...(data ? { body: JSON.stringify(data) } : {}) });
@@ -62,11 +64,33 @@ async function run() {
         const paperId = submitted.body.paper?._id;
         if (submitted.status !== 201 || submitted.body.paper.lifecycleStatus !== 'pending_proctor')
             throw new Error('Student paper did not enter Proctor review');
+        const proctorQueue = await req('/papers/mine', people.otherProctor);
+        if (proctorQueue.status !== 200 || !proctorQueue.body.papers.some((paper) => paper._id === paperId))
+            throw new Error('Institution Proctor could not see the paper in their queue');
+        const nonProctorQueue = await req('/papers/mine', people.other);
+        if (nonProctorQueue.status !== 200 || nonProctorQueue.body.papers.some((paper) => paper._id === paperId))
+            throw new Error('Non-Proctor faculty saw a paper they were not assigned');
+        const foreignProctorQueue = await req('/papers/mine', people.foreignProctor);
+        if (foreignProctorQueue.status !== 200 || foreignProctorQueue.body.papers.some((paper) => paper._id === paperId))
+            throw new Error('Proctor from another institution saw the paper');
+        const detail = await req(`/${paperId}`, people.otherProctor);
+        if (detail.status !== 200)
+            throw new Error(`Institution Proctor could not open the paper: ${detail.status}`);
+        if ((await req(`/papers/${paperId}/reviews`, people.foreignProctor, 'POST', { verdict: 'approved', comments: 'Outside institution' })).status !== 403)
+            throw new Error('Foreign Proctor review was accepted');
+        const facultyNotifications = await Notification_js_1.Notification.find({ entityId: paperId, type: 'system' }).select('recipient');
+        const notifiedIds = new Set(facultyNotifications.map(notification => notification.recipient.toString()));
+        for (const key of ['proctor', 'guide1', 'guide2', 'other', 'otherProctor', 'facultyAuthor', 'pi']) {
+            if (!notifiedIds.has(people[key]._id.toString()))
+                throw new Error(`Faculty member ${key} was not notified about the submission`);
+        }
+        if (notifiedIds.has(people.foreignProctor._id.toString()))
+            throw new Error('Faculty outside the institution was notified');
         if ((await req(`/papers/${paperId}/reviews`, people.other, 'POST', { verdict: 'approved', comments: 'Nope' })).status !== 403)
             throw new Error('Unassigned review was accepted');
-        if ((await req(`/papers/${paperId}/reviews`, people.proctor, 'POST', { verdict: 'approved', comments: 'Pass' })).status !== 201)
-            throw new Error('Proctor approval failed');
-        const duplicateReview = await req(`/papers/${paperId}/reviews`, people.proctor, 'POST', { verdict: 'approved', comments: 'Duplicate' });
+        if ((await req(`/papers/${paperId}/reviews`, people.otherProctor, 'POST', { verdict: 'approved', comments: 'Pass' })).status !== 201)
+            throw new Error('Unassigned institutional Proctor approval failed');
+        const duplicateReview = await req(`/papers/${paperId}/reviews`, people.otherProctor, 'POST', { verdict: 'approved', comments: 'Duplicate' });
         if (![403, 409].includes(duplicateReview.status))
             throw new Error(`Duplicate review was accepted: ${duplicateReview.status}`);
         if ((await req(`/papers/${paperId}/reviews`, people.guide1, 'POST', { verdict: 'approved', comments: 'Pass' })).status !== 201)
@@ -86,10 +110,17 @@ async function run() {
             throw new Error(`Second student submission failed: ${rejected.status} ${JSON.stringify(rejected.body)}`);
         const rejectedId = rejected.body.paper._id;
         await req(`/papers/${rejectedId}/reviews`, people.proctor, 'POST', { verdict: 'rejected', comments: 'Needs redesign' });
-        if ((await req(`/papers/${rejectedId}/resubmit`, people.student, 'POST', {})).status !== 200)
+        const resubmitted = await req(`/papers/${rejectedId}/resubmit`, people.student, 'POST', {});
+        if (resubmitted.status !== 200)
             throw new Error('Rejected work resubmission failed');
-        if ((await req(`/papers/${rejectedId}/reviews`, people.proctor, 'POST', { verdict: 'changes_requested', comments: 'Revise method' })).status !== 201)
-            throw new Error('Proctor changes requested failed');
+        const resubmissionNotifications = await Notification_js_1.Notification.find({ entityId: `${rejectedId}:revision:${resubmitted.body.revisionRound}`, type: 'system' }).select('recipient');
+        const resubmittedFacultyIds = new Set(resubmissionNotifications.map(notification => notification.recipient.toString()));
+        for (const key of ['proctor', 'guide1', 'guide2', 'other', 'otherProctor', 'facultyAuthor', 'pi']) {
+            if (!resubmittedFacultyIds.has(people[key]._id.toString()))
+                throw new Error(`Faculty member ${key} was not notified about the resubmission`);
+        }
+        if ((await req(`/papers/${rejectedId}/reviews`, people.otherProctor, 'POST', { verdict: 'changes_requested', comments: 'Revise method' })).status !== 201)
+            throw new Error('Institution Proctor changes requested failed');
         const facultyPaper = await req('/', people.facultyAuthor, 'POST', { title: 'Faculty work', abstract: 'Abstract', subject: 'Physics' });
         if (facultyPaper.status !== 201 || facultyPaper.body.paper.lifecycleStatus !== 'published')
             throw new Error('Faculty direct publication failed');
@@ -110,7 +141,7 @@ async function run() {
     }
     finally {
         server.close();
-        await Promise.all([ResearchReview_js_1.ResearchReview.deleteMany({}), ResearchPaper_js_1.ResearchPaper.deleteMany({}), ResearchCollaboration_js_1.ResearchCollaboration.deleteMany({}), MentorshipBinding_js_1.MentorshipBinding.deleteMany({}), User_js_1.User.deleteMany({ email: /@research-test\.invalid$/ })]);
+        await Promise.all([Notification_js_1.Notification.deleteMany({ recipient: { $in: Object.values(people).map((person) => person._id) } }), ResearchReview_js_1.ResearchReview.deleteMany({}), ResearchPaper_js_1.ResearchPaper.deleteMany({}), ResearchCollaboration_js_1.ResearchCollaboration.deleteMany({}), MentorshipBinding_js_1.MentorshipBinding.deleteMany({}), User_js_1.User.deleteMany({ email: /@research-test\.invalid$/ })]);
         await mongoose_1.default.connection.close();
     }
 }

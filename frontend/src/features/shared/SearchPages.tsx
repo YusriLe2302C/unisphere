@@ -23,6 +23,22 @@ import {
 } from '../../services/shared/shared-api';
 import './shared.css';
 
+const facultyRoles = new Set(['faculty', 'dean', 'principal']);
+const adminRoles = new Set(['admin', 'superadmin']);
+
+function canMessageRole(senderRole: string | undefined, recipientRole: string) {
+  if (!senderRole) return false;
+  if (facultyRoles.has(senderRole)) return true;
+  if (adminRoles.has(senderRole)) return facultyRoles.has(recipientRole);
+  if (senderRole === 'student') {
+    return recipientRole === 'alumni' || facultyRoles.has(recipientRole);
+  }
+  if (senderRole === 'alumni') {
+    return recipientRole === 'student' || facultyRoles.has(recipientRole);
+  }
+  return false;
+}
+
 function PersonCard({ person }: { person: SearchPerson }) {
   const privacy = person.privacySettings;
   return (
@@ -177,6 +193,11 @@ export function PublicProfilePage() {
   const profile = person;
   const privacy = profile.privacySettings;
   const own = profile._id === user?._id;
+  const canMessage =
+    !own &&
+    profile.institution === user?.institution &&
+    privacy?.allowDirectMessages !== false &&
+    canMessageRole(user?.role, profile.role);
   async function message() {
     if (!session?.token) return;
     setSending(true);
@@ -206,7 +227,7 @@ export function PublicProfilePage() {
           {privacy?.showPhone && profile.phone && <p>{profile.phone}</p>}
           <Badge>{profile.role.replaceAll('_', ' ')}</Badge>
         </div>
-        {!own && privacy?.allowDirectMessages !== false && (
+        {canMessage && (
           <Button loading={sending} onClick={() => void message()}>
             Message
           </Button>

@@ -1,6 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.preventPrivilegeEscalation = exports.requireInstitutionAuthority = exports.requireOwnershipOrRole = exports.requireSameInstitution = exports.requireResponsibility = exports.requireRoles = exports.PUBLIC_REGISTRATION_ROLES = exports.PRIVILEGED_ROLES = void 0;
+exports.canMessageUsers = canMessageUsers;
+exports.canParticipateInConversation = canParticipateInConversation;
+exports.getConversationParticipantIds = getConversationParticipantIds;
 const errors_js_1 = require("../utils/errors.js");
 // Roles that have platform-wide authority
 const PLATFORM_ADMIN_ROLES = ['admin', 'superadmin'];
@@ -98,3 +101,66 @@ const preventPrivilegeEscalation = (targetRole) => {
     };
 };
 exports.preventPrivilegeEscalation = preventPrivilegeEscalation;
+const FACULTY_ROLES = new Set(['faculty', 'dean', 'principal']);
+const ADMIN_ROLES = new Set(['admin', 'superadmin']);
+const CHAT_ROLES = new Set([
+    ...FACULTY_ROLES,
+    ...ADMIN_ROLES,
+    'student',
+    'alumni',
+]);
+function canMessageUsers(sender, recipient, respectRecipientPrivacy = true) {
+    if (!sender || !recipient || sender.isActive === false || recipient.isActive === false) {
+        return false;
+    }
+    if (sender._id &&
+        recipient._id &&
+        sender._id.toString() === recipient._id.toString()) {
+        return false;
+    }
+    if (!CHAT_ROLES.has(sender.role) ||
+        !CHAT_ROLES.has(recipient.role) ||
+        sender.institution !== recipient.institution ||
+        (respectRecipientPrivacy && recipient.privacySettings?.allowDirectMessages === false)) {
+        return false;
+    }
+    const senderIsAdmin = ADMIN_ROLES.has(sender.role);
+    const recipientIsAdmin = ADMIN_ROLES.has(recipient.role);
+    if (senderIsAdmin || recipientIsAdmin) {
+        return senderIsAdmin
+            ? FACULTY_ROLES.has(recipient.role)
+            : FACULTY_ROLES.has(sender.role);
+    }
+    if (FACULTY_ROLES.has(sender.role) || FACULTY_ROLES.has(recipient.role)) {
+        return true;
+    }
+    return ((sender.role === 'student' && recipient.role === 'alumni') ||
+        (sender.role === 'alumni' && recipient.role === 'student'));
+}
+function canParticipateInConversation(userId, rawParticipants) {
+    const participants = rawParticipants.filter((participant) => typeof participant === 'object' && participant !== null && 'role' in participant);
+    if (participants.length !== rawParticipants.length || participants.length < 2)
+        return false;
+    if (!participants.some((participant) => participant._id?.toString() === userId))
+        return false;
+    for (let first = 0; first < participants.length; first += 1) {
+        for (let second = first + 1; second < participants.length; second += 1) {
+            if (!canMessageUsers(participants[first], participants[second], false))
+                return false;
+            if (!canMessageUsers(participants[second], participants[first], false))
+                return false;
+        }
+    }
+    return true;
+}
+function getConversationParticipantIds(rawParticipants) {
+    return rawParticipants.map((participant) => {
+        if (typeof participant === 'object' &&
+            participant !== null &&
+            'role' in participant &&
+            '_id' in participant) {
+            return String(participant._id);
+        }
+        return String(participant);
+    });
+}

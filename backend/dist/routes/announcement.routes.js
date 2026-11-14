@@ -15,6 +15,54 @@ const router = (0, express_1.Router)();
  * - student/alumni: not permitted
  */
 const ANNOUNCEMENT_ALLOWED_ROLES = ['admin', 'superadmin', 'principal', 'dean', 'faculty'];
+const AUDIENCE_ROLES = {
+    students: ['student'],
+    faculty: ['faculty', 'dean', 'principal'],
+    alumni: ['alumni']
+};
+function announcementRecipientQuery(announcement) {
+    const query = { isActive: true };
+    if (announcement.institution !== '*')
+        query.institution = announcement.institution;
+    const clauses = [];
+    const audienceRoles = AUDIENCE_ROLES[announcement.targetAudience];
+    if (audienceRoles)
+        clauses.push({ role: { $in: audienceRoles } });
+    if (announcement.targetRoles?.length) {
+        clauses.push({ role: { $in: announcement.targetRoles } });
+    }
+    if (announcement.targetDepartments?.length) {
+        clauses.push({ department: { $in: announcement.targetDepartments } });
+    }
+    if (announcement.targetAcademicYears?.length) {
+        clauses.push({ batch: { $in: announcement.targetAcademicYears } });
+    }
+    if (announcement.targetSemesters?.length) {
+        clauses.push({ semester: { $in: announcement.targetSemesters } });
+    }
+    if (announcement.targetSections?.length) {
+        clauses.push({ section: { $in: announcement.targetSections } });
+    }
+    if (clauses.length)
+        query.$and = clauses;
+    return query;
+}
+async function notifyAnnouncementRecipients(announcement, senderId, updated = false) {
+    const recipients = await User_js_1.User.find(announcementRecipientQuery(announcement)).select('_id');
+    if (!recipients.length)
+        return;
+    await delivery_service_js_1.DeliveryService.deliverContentNotification({
+        specificRecipients: recipients.map((recipient) => recipient._id),
+        senderId,
+        type: 'announcement',
+        entityId: updated
+            ? `${announcement._id}:updated:${announcement.updatedAt.getTime()}`
+            : announcement._id.toString(),
+        message: updated
+            ? `📢 Updated announcement: ${announcement.title}`
+            : `📢 [${announcement.institution}] ${announcement.title}`
+    });
+}
 function canPublishAnnouncement(user, targetInstitution) {
     const role = user.role;
     const hasAdvisorResponsibility = (user.responsibilities || []).includes('club_advisor');
@@ -175,39 +223,7 @@ router.post('/', auth_js_1.authenticate, async (req, res) => {
             isPinned: isPinned || false,
             expiresAt: expiresAt || undefined
         });
-        // Build recipient query matching targeting criteria
-        const recipientQuery = targetInst === '*'
-            ? { isActive: true }
-            : { institution: targetInst, isActive: true };
-        if (targetAudience && targetAudience !== 'all') {
-            const roleMap = {
-                students: ['student'],
-                faculty: ['faculty', 'dean', 'principal'],
-                alumni: ['alumni']
-            };
-            if (roleMap[targetAudience])
-                recipientQuery.role = { $in: roleMap[targetAudience] };
-        }
-        if (targetRoles?.length)
-            recipientQuery.role = { $in: targetRoles };
-        if (targetDepartments?.length)
-            recipientQuery.department = { $in: targetDepartments };
-        if (targetAcademicYears?.length)
-            recipientQuery.batch = { $in: targetAcademicYears };
-        if (targetSemesters?.length)
-            recipientQuery.semester = { $in: targetSemesters };
-        if (targetSections?.length)
-            recipientQuery.section = { $in: targetSections };
-        const recipients = await User_js_1.User.find(recipientQuery).select('_id');
-        if (recipients.length > 0) {
-            await delivery_service_js_1.DeliveryService.deliverContentNotification({
-                specificRecipients: recipients.map(r => r._id),
-                senderId: user._id,
-                type: 'announcement',
-                entityId: ann._id.toString(),
-                message: `📢 [${targetInst}] ${title.trim()}`
-            });
-        }
+        await notifyAnnouncementRecipients(ann, user._id);
         res.status(201).json({ message: 'Announcement published.', announcement: ann });
     }
     catch (err) {
@@ -234,6 +250,7 @@ router.put('/:id', auth_js_1.authenticate, async (req, res) => {
         fields.forEach(f => { if (req.body[f] !== undefined)
             ann[f] = req.body[f]; });
         await ann.save();
+        await notifyAnnouncementRecipients(ann, user._id, true);
         res.json({ message: 'Announcement updated.', announcement: ann });
     }
     catch (err) {

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { ArrowLeft, Check, CheckCheck, MessageCircle, Search, Send } from 'lucide-react';
+import { io, type Socket } from 'socket.io-client';
 import { Link, useParams } from 'react-router-dom';
 import { Avatar, Button, Input, Textarea } from '../../components/ui';
 import { useAuth } from '../../app/providers/useAuth';
-import { ApiError } from '../../services/api';
+import { ApiError, API_BASE_URL } from '../../services/api';
 import {
   getConversationMessages,
   getConversations,
@@ -16,6 +17,79 @@ import {
 import { CareerError, CareerHeading, CareerLoading, CareerNav } from './career-components';
 import { careerPaths } from './career-paths';
 import './career.css';
+
+interface ChatAck {
+  ok: boolean;
+  error?: string;
+  message?: CareerMessage;
+}
+
+interface ChatServerEvents {
+  'message:new': (message: CareerMessage) => void;
+  'message:read-receipt': (receipt: { messageId: string; userId: string; readAt: string }) => void;
+  'message:delivered-receipt': (receipt: { messageId: string; userId: string }) => void;
+  'conversation:added': (conversation: CareerConversation) => void;
+  typing: (event: { conversationId: string; userId: string; isTyping: boolean }) => void;
+}
+
+interface ChatClientEvents {
+  'conversation:join': (
+    data: { conversationId: string },
+    ack?: (response: ChatAck) => void,
+  ) => void;
+  'conversation:leave': (
+    data: { conversationId: string },
+    ack?: (response: ChatAck) => void,
+  ) => void;
+  'message:send': (
+    data: { conversationId: string; content: string; clientMessageId: string },
+    ack: (response: ChatAck) => void,
+  ) => void;
+  'message:delivered': (
+    data: { messageId: string },
+    ack?: (response: { ok: boolean }) => void,
+  ) => void;
+  typing: (event: { conversationId: string; isTyping: boolean }) => void;
+}
+
+type ChatSocket = Socket<ChatServerEvents, ChatClientEvents>;
+
+function entityId(value: string | ConversationPerson): string {
+  return typeof value === 'string' ? value : value._id;
+}
+
+function mergeMessages(current: CareerMessage[], incoming: CareerMessage[]): CareerMessage[] {
+  const messages = new Map(current.map((message) => [message._id, message]));
+  for (const message of incoming) {
+    const previous = messages.get(message._id);
+    if (!previous) {
+      messages.set(message._id, message);
+      continue;
+    }
+
+    const readBy = new Map(
+      [...(previous.readBy || []), ...(message.readBy || [])].map((receipt) => [
+        entityId(receipt.userId),
+        receipt,
+      ]),
+    );
+    const deliveredTo = new Map(
+      [...(previous.deliveredTo || []), ...(message.deliveredTo || [])].map((id) => [
+        entityId(id),
+        id,
+      ]),
+    );
+    messages.set(message._id, {
+      ...previous,
+      ...message,
+      readBy: [...readBy.values()],
+      deliveredTo: [...deliveredTo.values()],
+    });
+  }
+  return [...messages.values()].sort(
+    (first, second) => new Date(first.createdAt).getTime() - new Date(second.createdAt).getTime(),
+  );
+}
 
 function person(value: string | ConversationPerson | undefined): ConversationPerson | undefined {
   return value && typeof value !== 'string' ? value : undefined;
@@ -48,7 +122,13 @@ export function MessagesPage() {
   const [loading, setLoading] = useState(true);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [socketConnected, setSocketConnected] = useState(false);
+  const [typing, setTyping] = useState(false);
   const [error, setError] = useState('');
+  const socketRef = useRef<ChatSocket | null>(null);
+  const currentConversationRef = useRef(conversationId);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  currentConversationRef.current = conversationId;
   const selected = conversations.find((c) => c._id === conversationId);
   const loadConversations = useCallback(async () => {
     if (!session?.token) return;
@@ -64,6 +144,111 @@ export function MessagesPage() {
   useEffect(() => {
     void loadConversations();
   }, [loadConversations]);
+  useEffect(() => {
+    if (!session?.token || !user?._id) return;
+    const socket = io(
+      API_BASE_URL.replace(/\/api$/, ''),
+      { auth: { token: session.token } },
+    ) as ChatSocket;
+    socketRef.current = socket;
+    socket.on('connect', () => setSocketConnected(true));
+    socket.on('disconnect', () => setSocketConnected(false));
+    socket.on('connect_error', () => setSocketConnected(false));
+    socket.on('message:new', (message) => {
+      if (currentConversationRef.current === message.conversationId) {
+        setMessages((current) => mergeMessages(current, [message]));
+      }
+      setConversations((current) => {
+        const updated = current.map((conversation) =>
+          conversation._id === message.conversationId
+            ? {
+                ...conversation,
+                lastMessage: message,
+                lastMessageAt: message.createdAt,
+              }
+            : conversation,
+        );
+        return updated.sort(
+          (first, second) =>
+            new Date(second.lastMessageAt || 0).getTime() -
+            new Date(first.lastMessageAt || 0).getTime(),
+        );
+      });
+      void loadConversations();
+
+      const senderId =
+        typeof message.sender === 'string' ? message.sender : message.sender._id;
+      if (senderId !== user._id) {
+        socket.emit('message:delivered', { messageId: message._id });
+        if (currentConversationRef.current === message.conversationId) {
+          void markCareerMessageRead(session.token, message._id).catch((cause: unknown) => {
+            setError(
+              cause instanceof ApiError
+                ? cause.message
+                : 'An incoming message could not be marked as read.',
+            );
+          });
+        }
+      }
+    });
+    socket.on('message:read-receipt', ({ messageId, userId, readAt }) => {
+      setMessages((current) =>
+        current.map((message) =>
+          message._id !== messageId
+            ? message
+            : {
+                ...message,
+                readBy: [
+                  ...(message.readBy || []).filter(
+                    (receipt) => entityId(receipt.userId) !== userId,
+                  ),
+                  { userId, readAt },
+                ],
+              },
+        ),
+      );
+    });
+    socket.on('message:delivered-receipt', ({ messageId, userId }) => {
+      setMessages((current) =>
+        current.map((message) =>
+          message._id !== messageId ||
+          (message.deliveredTo || []).some((id) => entityId(id) === userId)
+            ? message
+            : { ...message, deliveredTo: [...(message.deliveredTo || []), userId] },
+        ),
+      );
+    });
+    socket.on('conversation:added', () => {
+      void loadConversations();
+    });
+    socket.on('typing', (event) => {
+      if (event.conversationId === currentConversationRef.current && event.userId !== user._id) {
+        setTyping(event.isTyping);
+      }
+    });
+    return () => {
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+      socket.disconnect();
+      socketRef.current = null;
+      setSocketConnected(false);
+    };
+  }, [session?.token, user?._id, loadConversations]);
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!socketConnected || !socket || !conversationId) return;
+    socket.emit('conversation:join', { conversationId }, (response) => {
+      if (!response.ok) setError(response.error || 'This conversation could not be joined.');
+    });
+    return () => {
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+      socket.emit('typing', { conversationId, isTyping: false });
+      socket.emit('conversation:leave', { conversationId });
+      setTyping(false);
+    };
+  }, [conversationId, socketConnected]);
+  useEffect(() => {
+    setTyping(false);
+  }, [conversationId]);
   const loadMessages = useCallback(async () => {
     const token = session?.token;
     if (!token || !conversationId) return;
@@ -71,7 +256,7 @@ export function MessagesPage() {
     setError('');
     try {
       const r = await getConversationMessages(token, conversationId);
-      setMessages(r.messages);
+      setMessages((current) => mergeMessages(current, r.messages));
       setOlder(r.nextBefore);
       const unreadMessages = r.messages.filter((message) => {
         const senderId = typeof message.sender === 'string' ? message.sender : message.sender._id;
@@ -119,17 +304,40 @@ export function MessagesPage() {
     setError('');
     const content = draft.trim();
     try {
-      const result = await sendConversationMessage(
-        session.token,
-        conversationId,
-        content,
-        globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      );
-      setMessages((current) => [...current, result.message]);
+      const clientMessageId =
+        globalThis.crypto?.randomUUID?.() ||
+        `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const socket = socketRef.current;
+      let message: CareerMessage | undefined;
+      if (socket?.connected) {
+        const response = await new Promise<ChatAck | undefined>((resolve) => {
+          socket.timeout(10000).emit(
+            'message:send',
+            { conversationId, content, clientMessageId },
+            (timeoutError, ack) => resolve(timeoutError ? undefined : ack),
+          );
+        });
+        if (response && !response.ok) {
+          throw new Error(response.error || 'Message could not be sent.');
+        }
+        message = response?.message;
+      }
+      if (!message) {
+        const result = await sendConversationMessage(
+          session.token,
+          conversationId,
+          content,
+          clientMessageId,
+        );
+        message = result.message;
+      }
+      setMessages((current) => mergeMessages(current, [message]));
       setDraft('');
       void loadConversations();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Message could not be sent.');
+      setError(
+        e instanceof ApiError || e instanceof Error ? e.message : 'Message could not be sent.',
+      );
     } finally {
       setSending(false);
     }
@@ -139,12 +347,25 @@ export function MessagesPage() {
     setMessagesLoading(true);
     try {
       const r = await getConversationMessages(session.token, conversationId, older);
-      setMessages((current) => [...r.messages, ...current]);
+      setMessages((current) => mergeMessages(current, r.messages));
       setOlder(r.nextBefore);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Earlier messages could not be loaded.');
     } finally {
       setMessagesLoading(false);
+    }
+  }
+  function updateDraft(value: string) {
+    setDraft(value);
+    const socket = socketRef.current;
+    if (!socket?.connected || !conversationId) return;
+    socket.emit('typing', { conversationId, isTyping: Boolean(value.trim()) });
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    if (value.trim()) {
+      typingTimerRef.current = setTimeout(() => {
+        socket.emit('typing', { conversationId, isTyping: false });
+        typingTimerRef.current = null;
+      }, 800);
     }
   }
   const mobileMessages = Boolean(conversationId);
@@ -211,11 +432,11 @@ export function MessagesPage() {
               <MessageCircle size={30} />
               <h2>Your conversations</h2>
               <p>
-                Choose a conversation to view its messages. Start from an alumni profile to open an
-                authorized conversation.
+                Choose a conversation to view its messages. Search for people you’re allowed to
+                contact to start a conversation.
               </p>
-              <Link to={careerPaths.alumni} className="button button-secondary">
-                Browse alumni
+              <Link to="/app/search" className="button button-secondary">
+                Find people to message
               </Link>
             </div>
           ) : (
@@ -235,7 +456,12 @@ export function MessagesPage() {
                 />
                 <div>
                   <strong>{conversationTitle(selected, user?._id)}</strong>
-                  <small>{selected?.isGroup ? 'Group conversation' : 'Private conversation'}</small>
+                  <small aria-live="polite">
+                    {selected?.isGroup ? 'Group conversation' : 'Private conversation'}
+                    {' · '}
+                    {socketConnected ? 'Live' : 'Reconnecting'}
+                    {typing ? ' · Typing…' : ''}
+                  </small>
                 </div>
               </header>
               <div className="career-message-history" aria-live="polite">
@@ -301,7 +527,7 @@ export function MessagesPage() {
               <form className="career-message-composer" onSubmit={send}>
                 <Textarea
                   value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
+                  onChange={(e) => updateDraft(e.target.value)}
                   rows={2}
                   maxLength={10000}
                   aria-label="Message"

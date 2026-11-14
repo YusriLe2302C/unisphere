@@ -29,6 +29,7 @@ const messages_routes_js_1 = __importDefault(require("./routes/messages.routes.j
 const env_js_1 = require("./config/env.js");
 const createApp = () => {
     const app = (0, express_1.default)();
+    const origin = env_js_1.envConfig.CORS_ORIGIN;
     // Operational Safety & Security Middleware
     app.use((0, cors_1.default)({
         origin: (origin, callback) => {

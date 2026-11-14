@@ -67,7 +67,10 @@ export function MyResearchPage() {
   const pendingPapers = papers.filter(
     (paper) =>
       ['pending_proctor', 'pending_guide'].includes(paper.lifecycleStatus ?? '') &&
-      (paper.assignedProctorId === user?._id ||
+      ((paper.lifecycleStatus === 'pending_proctor' &&
+        user?.role === 'faculty' &&
+        user.responsibilities?.includes('proctor')) ||
+        paper.assignedProctorId === user?._id ||
         paper.assignedProjectGuideId === user?._id ||
         paper.assignedProjectGuideIds?.includes(user?._id ?? '')),
   );

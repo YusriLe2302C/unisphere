@@ -68,7 +68,7 @@ export function ResearchPaperDetailsPage() {
     try {
       const result = await resubmitResearchPaper(session.token, paper._id);
       setPaper(result.paper);
-      setActionMessage(`Resubmitted for review · revision ${result.revisionRound}.`);
+      setActionMessage(`Updated and published without review · revision ${result.revisionRound}.`);
     } catch (reason) {
       setActionError(
         reason instanceof ApiError ? reason.message : 'This submission could not be resubmitted.',
@@ -109,7 +109,9 @@ export function ResearchPaperDetailsPage() {
     typeof paper.submittedBy === 'object' ? paper.submittedBy.name : paper.authors?.[0]?.name;
   const isStudentRejected =
     paper.isStudentSubmission && isOwner && paper.lifecycleStatus === 'rejected';
-  const showWorkflow = Boolean(paper.isStudentSubmission || reviews.length);
+  const showWorkflow = Boolean(
+    reviews.length || paper.isStudentSubmission && paper.lifecycleStatus !== 'published',
+  );
 
   return (
     <div className="research-page">
@@ -234,8 +236,8 @@ export function ResearchPaperDetailsPage() {
             <span className="eyebrow">CHANGES REQUESTED</span>
             <h2>Update and resubmit</h2>
             <p>
-              Make permitted metadata changes, then resubmit this record for the assigned Proctor
-              and Project Guide workflow.
+              Make permitted metadata changes, then publish the updated record without review. It
+              will remain visible only to members of your institution.
             </p>
           </div>
           <div className="research-resubmit-actions">
@@ -250,7 +252,7 @@ export function ResearchPaperDetailsPage() {
               loading={busy}
               onClick={() => void resubmit()}
             >
-              Resubmit unchanged
+              Publish unchanged
             </Button>
           </div>
         </Card>

@@ -118,6 +118,105 @@ const runTests = async () => {
 
     console.log('  Users ready.\n');
 
+    // ── MESSAGING ROLE PERMISSIONS ────────────────────────────────────────────
+    const deniedStudentChat = await req(
+      `${base}/messages/conversations/direct`,
+      'POST',
+      sTok,
+      { userId: student2._id.toString() }
+    );
+    assert(deniedStudentChat.status === 403, 'Students cannot start student-to-student chats');
+
+    const studentAlumniChat = await req(
+      `${base}/messages/conversations/direct`,
+      'POST',
+      sTok,
+      { userId: alumni._id.toString() }
+    );
+    assert(studentAlumniChat.status === 200, 'Students can start chats with alumni');
+    const studentAlumniConversationId = studentAlumniChat.data.conversation._id;
+    const sentChatMessage = await req(
+      `${base}/messages/conversations/${studentAlumniConversationId}/messages`,
+      'POST',
+      sTok,
+      { content: 'Career guidance question', clientMessageId: `hub-${Date.now()}` }
+    );
+    assert(sentChatMessage.status === 201, 'Authorized users can send a direct message');
+    const studentConversations = await req(
+      `${base}/messages/conversations`,
+      'GET',
+      sTok
+    );
+    assert(
+      studentConversations.status === 200 &&
+        studentConversations.data.conversations.some(
+          (conversation: any) => conversation._id === studentAlumniConversationId
+        ),
+      'Authorized direct conversations appear in the inbox'
+    );
+    const alumniReadReceipt = await req(
+      `${base}/messages/${sentChatMessage.data.message._id}/read`,
+      'POST',
+      alumniTok,
+      {}
+    );
+    assert(
+      alumniReadReceipt.status === 200,
+      'The other authorized participant can read messages',
+      `HTTP ${alumniReadReceipt.status}`
+    );
+
+    const studentFacultyChat = await req(
+      `${base}/messages/conversations/direct`,
+      'POST',
+      sTok,
+      { userId: faculty._id.toString() }
+    );
+    assert(studentFacultyChat.status === 200, 'Students can start chats with faculty');
+
+    const facultyStudentChat = await req(
+      `${base}/messages/conversations/direct`,
+      'POST',
+      fTok,
+      { userId: student2._id.toString() }
+    );
+    assert(facultyStudentChat.status === 200, 'Faculty can start chats with students');
+
+    const adminFacultyChat = await req(
+      `${base}/messages/conversations/direct`,
+      'POST',
+      saTok,
+      { userId: faculty._id.toString() }
+    );
+    assert(adminFacultyChat.status === 200, 'Admins can start chats with faculty');
+
+    const adminStudentChat = await req(
+      `${base}/messages/conversations/direct`,
+      'POST',
+      saTok,
+      { userId: student._id.toString() }
+    );
+    assert(adminStudentChat.status === 403, 'Admins cannot start chats with students');
+
+    const crossInstitutionAdminFacultyChat = await req(
+      `${base}/messages/conversations/direct`,
+      'POST',
+      aTok,
+      { userId: faculty._id.toString() }
+    );
+    assert(
+      crossInstitutionAdminFacultyChat.status === 403,
+      'Admins cannot message faculty outside their institution'
+    );
+
+    const studentGroupChat = await req(
+      `${base}/messages/conversations/group`,
+      'POST',
+      sTok,
+      { participantIds: [student2._id.toString(), faculty._id.toString()] }
+    );
+    assert(studentGroupChat.status === 403, 'Student groups cannot bypass student-to-student restrictions');
+
     // ── A. POSTS ─────────────────────────────────────────────────────────────
     console.log('── A. Posts CRUD ──');
 
@@ -280,6 +379,51 @@ const runTests = async () => {
       targetAudience: 'all'
     });
     assert(an11 === 201, 'Admin publishes a platform-wide announcement');
+    const studentAnnouncementNotification = await Notification.findOne({
+      recipient: student._id,
+      type: 'announcement',
+      entityId: and11.announcement._id
+    });
+    const facultyAnnouncementNotification = await Notification.findOne({
+      recipient: faculty._id,
+      type: 'announcement',
+      entityId: and11.announcement._id
+    });
+    assert(
+      Boolean(studentAnnouncementNotification && facultyAnnouncementNotification),
+      'Admin announcement notifies students and faculty'
+    );
+
+    const { status: announcementUpdateStatus, data: announcementUpdate } = await req(
+      `${base}/announcements/${and11.announcement._id}`,
+      'PUT',
+      aTok,
+      { title: 'Global Platform Update (Revised)' }
+    );
+    const updateNotificationId =
+      `${and11.announcement._id}:updated:${new Date(announcementUpdate.announcement.updatedAt).getTime()}`;
+    const updatedStudentNotification = await Notification.findOne({
+      recipient: student._id,
+      type: 'announcement',
+      entityId: updateNotificationId
+    });
+    const updatedFacultyNotification = await Notification.findOne({
+      recipient: faculty._id,
+      type: 'announcement',
+      entityId: updateNotificationId
+    });
+    assert(
+      Boolean(
+        announcementUpdateStatus === 200 &&
+          updatedStudentNotification &&
+          updatedFacultyNotification
+      ),
+      'Updated admin announcement re-notifies students and faculty'
+    );
+    assert(
+      announcementUpdate.announcement.title === 'Global Platform Update (Revised)',
+      'Announcement feed returns the updated content'
+    );
 
     // Targeting: student in CS sem 3 sees the CS announcement
     const { status: an6, data: and6 } = await req(`${base}/announcements`, 'GET', sTok);

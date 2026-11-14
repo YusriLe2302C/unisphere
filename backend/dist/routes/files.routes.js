@@ -16,6 +16,7 @@ const Post_js_1 = require("../models/Post.js");
 const CareerQuestion_js_1 = require("../models/CareerQuestion.js");
 const Message_js_1 = require("../models/Message.js");
 const Application_js_1 = require("../models/Application.js");
+const research_review_access_js_1 = require("../utils/research-review-access.js");
 const router = (0, express_1.Router)();
 const types = ['post', 'research_paper', 'opportunity', 'application', 'avatar', 'chat_message', 'academic_notice', 'event', 'community_resource', 'profile_image', 'placement_document', 'research_dataset', 'project_document', 'career_question'];
 const clean = (name) => path_1.default.basename(name).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 180) || 'file';
@@ -111,7 +112,7 @@ async function canRead(file, u) {
     }
     if (['research_paper', 'research_dataset', 'project_document'].includes(file.associatedEntityType)) {
         const p = await ResearchPaper_js_1.ResearchPaper.findById(file.associatedEntityId);
-        return Boolean(p && p.institution === u.institution && (p.lifecycleStatus === 'published' || p.submittedBy.toString() === u._id.toString() || p.assignedProctorId?.toString() === u._id.toString() || (p.assignedProjectGuideIds || []).some(x => x.toString() === u._id.toString())));
+        return Boolean(p && p.institution === u.institution && (p.lifecycleStatus === 'published' || p.submittedBy.toString() === u._id.toString() || p.assignedProctorId?.toString() === u._id.toString() || (p.assignedProjectGuideIds || []).some(x => x.toString() === u._id.toString()) || p.isStudentSubmission && p.lifecycleStatus === 'pending_proctor' && (0, research_review_access_js_1.isInstitutionProctor)(u, p)));
     }
     if (file.associatedEntityType === 'career_question') {
         const q = await CareerQuestion_js_1.CareerQuestion.findById(file.associatedEntityId);

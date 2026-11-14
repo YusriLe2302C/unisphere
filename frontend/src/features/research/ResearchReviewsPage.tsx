@@ -82,12 +82,14 @@ export function ResearchReviewsPage() {
     () =>
       papers.filter(
         (paper) =>
-          (paper.lifecycleStatus === 'pending_proctor' && paper.assignedProctorId === user?._id) ||
+          (paper.lifecycleStatus === 'pending_proctor' &&
+            (paper.assignedProctorId === user?._id ||
+              user?.role === 'faculty' && user.responsibilities?.includes('proctor'))) ||
           (paper.lifecycleStatus === 'pending_guide' &&
             (paper.assignedProjectGuideIds?.includes(user?._id ?? '') ||
               paper.assignedProjectGuideId === user?._id)),
       ),
-    [papers, user?._id],
+    [papers, user?._id, user?.role, user?.responsibilities],
   );
 
   async function submit(event: FormEvent<HTMLFormElement>, paper: ResearchPaper) {
@@ -126,7 +128,7 @@ export function ResearchReviewsPage() {
       <ResearchNavigation active="reviews" />
       <ResearchPageHeading
         title="Research reviews"
-        description="Review assignments and the current paper workflow stage from your R&D queue."
+        description="Any institutional Proctor may decide a pending Proctor stage; the first decision advances it to the assigned Project Guides."
         action={
           <Link className="button button-secondary" to={researchPaths.mine}>
             My research records
@@ -165,7 +167,7 @@ export function ResearchReviewsPage() {
         ) : (
           <ResearchEmpty
             title="No papers are awaiting your review"
-            description="Only the reviewer assigned to the paper’s current workflow stage can submit a decision."
+            description="Any institutional Proctor may take the Proctor-stage decision; Project Guide reviews remain assigned."
           />
         )}
       </section>

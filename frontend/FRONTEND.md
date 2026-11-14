@@ -110,7 +110,7 @@ These are intentionally not presented as working controls because the current fr
 - Search results cover people only because the current search endpoint is user discovery. Notification records without a known route target still show their details and remain readable, but do not get a guessed destination.
 - The Career Connect alumni directory returns active alumni from the signed-in user’s institution; it is not a student directory. Student profile details come only from the general user search/profile endpoints and must continue to follow their privacy-filtered response.
 - Mentorship request responses expose only the student fields selected by the backend (name, avatar, and institution). The mentorship interface intentionally does not display additional academic or contact details.
-- The message composer currently supports text only and does not subscribe to the backend’s realtime message events. New incoming messages appear after the conversation is reloaded; backend-supported message attachments and realtime updates are not frontend capabilities yet.
+- The message composer supports text-only conversations. It authenticates a Socket.IO connection with the current session, sends and receives live messages, and reflects delivery/read receipts and typing status. Message sending falls back to the REST API when the socket is unavailable. Attachments are not supported by the frontend composer.
 
 ## QA scope and verification
 

@@ -47,6 +47,11 @@ const profile: AppNavigationItem = {
   label: 'Profile',
   icon: Users,
 };
+const conversations: AppNavigationItem = {
+  path: '/app/conversations',
+  label: 'Conversations',
+  icon: MessageCircle,
+};
 
 const studentSections: AppNavigationSection[] = [
   {
@@ -64,6 +69,7 @@ const studentSections: AppNavigationSection[] = [
       { path: '/app/research', label: 'Research and Development', icon: FlaskConical },
       { path: '/app/career-connect', label: 'Career Connect', icon: Compass },
       { path: '/app/placements', label: 'Placements', icon: BriefcaseBusiness },
+      conversations,
     ],
   },
   { label: 'Personal', items: [notifications, profile] },
@@ -83,7 +89,7 @@ const facultySections: AppNavigationSection[] = [
       { path: '/app/events', label: 'Events', icon: CalendarDays },
     ],
   },
-  { label: 'Personal', items: [notifications, profile] },
+  { label: 'Personal', items: [notifications, conversations, profile] },
 ];
 
 const alumniSections: AppNavigationSection[] = [
@@ -105,7 +111,7 @@ const alumniSections: AppNavigationSection[] = [
     items: [
       { path: '/app/career-connect/connections', label: 'Connections', icon: Users },
       { path: '/app/mentorship', label: 'Mentorship', icon: GraduationCap },
-      { path: '/app/conversations', label: 'Conversations', icon: MessageCircle },
+      conversations,
       { path: '/app/opportunities', label: 'Opportunities', icon: BriefcaseBusiness },
     ],
   },
@@ -125,7 +131,7 @@ const administrationSections: AppNavigationSection[] = [
       { path: '/app/administration', label: 'Administration', icon: Settings2 },
     ],
   },
-  { label: 'Personal', items: [notifications, profile] },
+  { label: 'Personal', items: [notifications, conversations, profile] },
 ];
 
 const leadershipSections: AppNavigationSection[] = [
@@ -134,6 +140,7 @@ const leadershipSections: AppNavigationSection[] = [
     label: 'Institution',
     items: [
       { path: '/app/announcements', label: 'Institutional Announcements', icon: Megaphone },
+      conversations,
       { path: '/app/academics', label: 'Academic Overview', icon: BookOpen },
       { path: '/app/research', label: 'Research Overview', icon: FlaskConical },
       { path: '/app/events', label: 'Events', icon: CalendarDays },

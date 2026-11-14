@@ -6,13 +6,11 @@ import { useAuth } from '../../app/providers/useAuth';
 import { ApiError } from '../../services/api';
 import {
   deleteResearchFile,
-  getResearchAssignments,
   getResearchPaper,
   createResearchPaper,
   updateRejectedPaper,
   uploadResearchFile,
   type PublicationType,
-  type ResearchAssignment,
   type ResearchFileRecord,
   type ResearchPaper,
 } from '../../services/research/research-api';
@@ -47,7 +45,6 @@ export function ResearchSubmissionPage() {
   const [visibility, setVisibility] = useState<'public' | 'institution-only'>('public');
   const [paperFile, setPaperFile] = useState<File | null>(null);
   const [datasetFile, setDatasetFile] = useState<File | null>(null);
-  const [assignmentList, setAssignmentList] = useState<ResearchAssignment[]>([]);
   const [loadingRecord, setLoadingRecord] = useState(Boolean(editId));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -56,13 +53,6 @@ export function ResearchSubmissionPage() {
 
   const load = useCallback(async () => {
     if (!session?.token) return;
-    if (user?.role === 'student') {
-      try {
-        setAssignmentList(await getResearchAssignments(session.token));
-      } catch {
-        setAssignmentList([]);
-      }
-    }
     if (editId) {
       setLoadingRecord(true);
       try {
@@ -96,7 +86,7 @@ export function ResearchSubmissionPage() {
         setLoadingRecord(false);
       }
     }
-  }, [session?.token, user?._id, user?.role, editId]);
+  }, [session?.token, user?._id, editId]);
 
   useEffect(() => {
     void load();
@@ -125,7 +115,7 @@ export function ResearchSubmissionPage() {
           tags,
         });
         setExistingRecord(result.paper);
-        setSuccess('Submission details saved. Submit it again from its workflow page when ready.');
+        setSuccess('Submission details saved. Publish the updated version from its workflow page when ready.');
       } catch (reason) {
         setError(
           reason instanceof ApiError ? reason.message : 'Submission changes could not be saved.',
@@ -194,12 +184,6 @@ export function ResearchSubmissionPage() {
         <div className="research-loading">Loading submission…</div>
       </div>
     );
-  const hasProctor = assignmentList.some(
-    (assignment) => assignment.assignmentType === 'proctor' && assignment.status === 'active',
-  );
-  const hasGuide = assignmentList.some(
-    (assignment) => assignment.assignmentType === 'project_guide' && assignment.status === 'active',
-  );
   const isStudent = user?.role === 'student';
 
   return (
@@ -219,7 +203,7 @@ export function ResearchSubmissionPage() {
         }
         description={
           isStudent
-            ? 'Submit a research paper for the assigned Proctor and Project Guide review workflow.'
+            ? 'Publish your research directly to your institution without reviewer approval.'
             : 'Add a publication or dataset using the research publication record supported by UniSphere.'
         }
       />
@@ -229,16 +213,10 @@ export function ResearchSubmissionPage() {
           {success}
         </p>
       )}
-      {isStudent && !editId && (!hasProctor || !hasGuide) && (
+      {isStudent && !editId && (
         <div className="research-workflow-notice" role="status">
-          <strong>Reviewer assignment required</strong>
-          <span>
-            {!hasProctor && !hasGuide
-              ? 'An active Proctor and Project Guide assignment are required before student submissions can be created.'
-              : !hasProctor
-                ? 'An active Proctor assignment is required before student submissions can be created.'
-                : 'An active Project Guide assignment is required before student submissions can be created.'}
-          </span>
+          <strong>No review required</strong>
+          <span>Your publication will be visible to members of your institution.</span>
         </div>
       )}
       <form className="research-form research-panel" onSubmit={submit}>
@@ -410,7 +388,7 @@ export function ResearchSubmissionPage() {
             {editId
               ? 'Save submission details'
               : isStudent
-                ? 'Submit for review'
+                ? 'Publish to institution'
                 : 'Create publication'}
           </Button>
           <Link className="button button-secondary" to={researchPaths.mine}>

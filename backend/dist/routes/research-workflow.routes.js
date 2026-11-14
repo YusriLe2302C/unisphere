@@ -9,6 +9,7 @@ const MentorshipBinding_js_1 = require("../models/MentorshipBinding.js");
 const ResearchCollaboration_js_1 = require("../models/ResearchCollaboration.js");
 const User_js_1 = require("../models/User.js");
 const delivery_service_js_1 = require("../services/delivery.service.js");
+const research_review_access_js_1 = require("../utils/research-review-access.js");
 const router = (0, express_1.Router)();
 const fail = (res, code, message) => res.status(code).json({ message });
 const manager = (u) => ['admin', 'superadmin', 'dean', 'principal'].includes(u.role);
@@ -114,7 +115,18 @@ router.post('/assignments/:id/reassign', auth_js_1.authenticate, async (req, res
 router.get('/papers/mine', auth_js_1.authenticate, async (req, res) => {
     try {
         const u = req.user;
-        const papers = await ResearchPaper_js_1.ResearchPaper.find({ $and: [{ institution: u.institution }, { $or: [{ submittedBy: u._id }, { assignedProctorId: u._id }, { assignedProjectGuideIds: u._id }, { assignedProjectGuideId: u._id }] }] }).sort({ updatedAt: -1 });
+        const reviewScopes = [
+            { assignedProctorId: u._id },
+            { assignedProjectGuideIds: u._id },
+            { assignedProjectGuideId: u._id },
+        ];
+        if ((0, research_review_access_js_1.isInstitutionProctor)(u, { institution: u.institution })) {
+            reviewScopes.push({ isStudentSubmission: true, lifecycleStatus: 'pending_proctor' });
+        }
+        const papers = await ResearchPaper_js_1.ResearchPaper.find({
+            institution: u.institution,
+            $or: [{ submittedBy: u._id }, ...reviewScopes],
+        }).sort({ updatedAt: -1 });
         res.json({ papers });
     }
     catch (e) {
@@ -141,7 +153,8 @@ router.post('/papers/:id/resubmit', auth_js_1.authenticate, async (req, res) => 
         p.lifecycleStatus = 'pending_proctor';
         await p.save();
         // Review history is immutable; the new revision number isolates later reviews.
-        await notify(req.user._id, [p.assignedProctorId, ...(p.assignedProjectGuideIds || [])].filter(Boolean), p._id.toString(), `Research resubmission requires review: ${p.title}`);
+        const faculty = await User_js_1.User.find({ institution: p.institution, role: 'faculty', isActive: true }).select('_id');
+        await notify(req.user._id, faculty.map(x => x._id), `${p._id}:revision:${p.revisionRound}`, `Research resubmission requires review: ${p.title}`);
         res.json({ paper: p, revisionRound: p.revisionRound });
     }
     catch (e) {
@@ -158,12 +171,12 @@ router.post('/papers/:id/reviews', auth_js_1.authenticate, async (req, res) => {
         const u = req.user;
         const reviewerId = u._id.toString();
         let role = null;
-        if (p.lifecycleStatus === 'pending_proctor' && p.assignedProctorId?.toString() === reviewerId)
+        if (p.lifecycleStatus === 'pending_proctor' && (p.assignedProctorId?.toString() === reviewerId || (0, research_review_access_js_1.isInstitutionProctor)(u, p)))
             role = 'proctor';
         if (p.lifecycleStatus === 'pending_guide' && (p.assignedProjectGuideIds || []).some(x => x.toString() === reviewerId))
             role = 'project_guide';
         if (!role)
-            return fail(res, 403, 'You are not the assigned reviewer for the current review stage');
+            return fail(res, 403, 'You are not eligible to review the current stage');
         const alreadyReviewed = await ResearchReview_js_1.ResearchReview.exists({ paperId: p._id, reviewerId: u._id, revisionRound: p.revisionRound || 1 });
         if (alreadyReviewed)
             return fail(res, 409, 'Reviewer already submitted a decision for this revision');
@@ -200,7 +213,8 @@ router.get('/papers/:id/reviews', auth_js_1.authenticate, async (req, res) => {
         if (!p)
             return fail(res, 404, 'Paper not found');
         const u = req.user;
-        const allowed = p.submittedBy.toString() === u._id.toString() || p.assignedProctorId?.toString() === u._id.toString() || (p.assignedProjectGuideIds || []).some(x => x.toString() === u._id.toString()) || manager(u);
+        const ownReview = await ResearchReview_js_1.ResearchReview.exists({ paperId: p._id, reviewerId: u._id });
+        const allowed = p.submittedBy.toString() === u._id.toString() || p.assignedProctorId?.toString() === u._id.toString() || (p.assignedProjectGuideIds || []).some(x => x.toString() === u._id.toString()) || ((0, research_review_access_js_1.isInstitutionProctor)(u, p) && (p.lifecycleStatus === 'pending_proctor' || Boolean(ownReview))) || manager(u);
         if (!allowed)
             return fail(res, 403, 'Not authorized to view review history');
         const reviews = await ResearchReview_js_1.ResearchReview.find({ paperId: p._id }).populate('reviewerId', 'name role').sort({ revisionRound: 1, reviewedAt: 1 });

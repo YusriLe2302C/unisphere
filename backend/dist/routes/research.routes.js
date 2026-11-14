@@ -12,6 +12,7 @@ const auth_js_1 = require("../middleware/auth.js");
 const platform_config_js_1 = require("../config/platform.config.js");
 const MentorshipBinding_js_1 = require("../models/MentorshipBinding.js");
 const UploadedFile_js_1 = require("../models/UploadedFile.js");
+const research_review_access_js_1 = require("../utils/research-review-access.js");
 const router = (0, express_1.Router)();
 const escapeRegex = (text) => {
     return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
@@ -703,7 +704,10 @@ router.get('/:id', auth_js_1.optionalAuthenticate, async (req, res) => {
         }
         const requesterId = req.user?._id?.toString();
         const isOwner = Boolean(requesterId && paper.submittedBy.toString() === requesterId);
-        const isReviewer = Boolean(requesterId && (paper.assignedProctorId?.toString() === requesterId || paper.assignedProjectGuideId?.toString() === requesterId || (paper.assignedProjectGuideIds || []).some(id => id.toString() === requesterId)));
+        const isReviewer = Boolean(requesterId && (paper.assignedProctorId?.toString() === requesterId ||
+            paper.assignedProjectGuideId?.toString() === requesterId ||
+            (paper.assignedProjectGuideIds || []).some(id => id.toString() === requesterId) ||
+            paper.isStudentSubmission && paper.lifecycleStatus === 'pending_proctor' && (0, research_review_access_js_1.isInstitutionProctor)(req.user, paper)));
         if (paper.lifecycleStatus !== 'published' && !isOwner && !isReviewer && !['admin', 'dean', 'principal', 'superadmin'].includes(req.user?.role || '')) {
             res.status(404).json({ message: 'Research publication not found.' });
             return;
@@ -770,8 +774,19 @@ router.post('/', auth_js_1.authenticate, async (req, res) => {
                 assignedProjectGuideIds: guides.map(g => g.faculty), revisionRound: 1,
                 reviewHistory: [{ revisionRound: 1, submittedAt: new Date(), submittedBy: req.user._id }] } : {})
         });
+        const studentFacultyRecipients = isStudent
+            ? await User_js_1.User.find({ institution: newPaper.institution, role: 'faculty', isActive: true }).select('_id')
+            : [];
         if (isStudent) {
-            await delivery_service_js_1.DeliveryService.deliverContentNotification({ specificRecipients: [proctor.faculty, ...guides.map(g => g.faculty)], senderId: req.user._id, type: 'system', entityId: newPaper._id.toString(), message: `Research submission requires review: ${newPaper.title}` });
+            await delivery_service_js_1.DeliveryService.deliverContentNotification({
+                specificRecipients: studentFacultyRecipients.map(faculty => faculty._id),
+                senderId: req.user._id,
+                type: 'system',
+                entityId: newPaper._id.toString(),
+                message: `Research submission requires review: ${newPaper.title}`,
+                visibility: 'institution-only',
+                institution: newPaper.institution
+            });
         }
         const populated = await ResearchPaper_js_1.ResearchPaper.findById(newPaper._id)
             .populate('submittedBy', 'name avatar institution role headline isVerified');
@@ -782,7 +797,7 @@ router.post('/', auth_js_1.authenticate, async (req, res) => {
                 { targetType: 'researcher', targetId: req.user._id.toString() }
             ],
             senderId: req.user._id,
-            specificRecipients: req.user.role === 'student' ? [proctor.faculty, ...guides.map(g => g.faculty)] : undefined,
+            specificRecipients: isStudent ? studentFacultyRecipients.map(faculty => faculty._id) : undefined,
             type: req.user.role === 'student' ? 'system' : 'research_publication',
             entityId: newPaper._id.toString(),
             message: `🔬 New Publication in ${newPaper.subject}: "${newPaper.title}"`,
